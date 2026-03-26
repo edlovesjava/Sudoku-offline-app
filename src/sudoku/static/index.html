@@ -75,14 +75,33 @@
   }
   /* Thicker borders for 3x3 boxes */
   .cell:nth-child(9n+4), .cell:nth-child(9n+7) { border-left: 2px solid #e94560; }
-  .cell:nth-child(n+19):nth-child(-n+27),
-  .cell:nth-child(n+46):nth-child(-n+54) { border-top: 2px solid #e94560; }
+  .cell:nth-child(n+28):nth-child(-n+36),
+  .cell:nth-child(n+55):nth-child(-n+63) { border-top: 2px solid #e94560; }
 
   .cell.fixed { color: #8899bb; cursor: default; }
   .cell.selected { background: #1a3a6e; }
   .cell.error { color: #ef4444; background: #2d1520; }
   .cell.correct-flash { animation: flash-green 0.4s; }
   .cell.highlight { background: #1a2d50; }
+  .cell.same-number { background: #2a1a4e; color: #c4b5fd; }
+
+  /* Notes */
+  .note {
+    position: absolute;
+    font-size: min(2vw, 0.55rem);
+    font-weight: 400;
+    color: #7aa2d4;
+    line-height: 1;
+  }
+  .note-1 { top: 2px; left: 3px; }
+  .note-2 { top: 2px; left: 50%; transform: translateX(-50%); }
+  .note-3 { top: 2px; right: 3px; }
+  .note-4 { top: 50%; right: 3px; transform: translateY(-50%); }
+  .note-5 { bottom: 2px; right: 3px; }
+  .note-6 { bottom: 2px; left: 50%; transform: translateX(-50%); }
+  .note-7 { bottom: 2px; left: 3px; }
+  .note-8 { top: 50%; left: 3px; transform: translateY(-50%); }
+  .note-9 { top: 50%; left: 50%; transform: translate(-50%, -50%); }
 
   @keyframes flash-green {
     0% { background: #16213e; }
@@ -110,6 +129,9 @@
   }
   .numpad button:hover { background: #0f3460; }
   .numpad button.erase { font-size: 1rem; font-weight: 400; }
+  .numpad button.completed { opacity: 0.3; }
+  .numpad button.note-toggle { font-size: 1rem; font-weight: 400; }
+  .numpad button.note-toggle.active { background: #0f3460; border-color: #e94560; color: #e94560; }
 
   /* Win message */
   .win-overlay {
@@ -175,6 +197,8 @@ const CACHE_SIZE = 5;
 
 let board = [];       // {value, fixed, solution, error}
 let selected = null;  // {row, col}
+let highlightNum = null; // number to highlight across grid
+let noteMode = false;
 let timerStart = null;
 let timerInterval = null;
 let gameActive = false;
@@ -235,6 +259,7 @@ function initBoard(puzzleStr, solutionStr) {
         fixed: v !== 0,
         solution: parseInt(solutionStr[i]),
         error: false,
+        notes: [],
       });
     }
     board.push(row);
@@ -254,6 +279,9 @@ function loadSavedGame() {
     const data = JSON.parse(localStorage.getItem(SAVE_KEY));
     if (!data || !data.board) return false;
     board = data.board;
+    for (const row of board)
+      for (const cell of row)
+        if (!cell.notes) cell.notes = [];
     selected = null;
     startTimer(data.timerElapsed || 0);
     gameActive = true;
@@ -285,17 +313,45 @@ function renderGrid() {
           cell.classList.add("highlight");
         }
       }
-      cell.textContent = b.value || "";
+      if (highlightNum && b.value === highlightNum) cell.classList.add("same-number");
+      if (b.value) {
+        cell.textContent = b.value;
+      } else if (b.notes && b.notes.length > 0) {
+        for (const n of b.notes) {
+          const span = document.createElement("span");
+          span.className = `note note-${n}`;
+          span.textContent = n;
+          cell.appendChild(span);
+        }
+      }
       cell.addEventListener("click", () => selectCell(r, c));
       grid.appendChild(cell);
     }
   }
+  updateNumpad();
+}
+
+function updateNumpad() {
+  const counts = {};
+  for (let n = 1; n <= 9; n++) counts[n] = 0;
+  for (const row of board)
+    for (const cell of row)
+      if (cell.value && !cell.error) counts[cell.value]++;
+  for (let n = 1; n <= 9; n++)
+    numButtons[n]?.classList.toggle("completed", counts[n] >= 9);
 }
 
 function selectCell(r, c) {
   if (!gameActive) return;
-  if (board[r][c].fixed) { selected = null; renderGrid(); return; }
+  const val = board[r][c].value;
+  if (board[r][c].fixed) {
+    selected = null;
+    highlightNum = (highlightNum === val) ? null : val;
+    renderGrid();
+    return;
+  }
   selected = { row: r, col: c };
+  highlightNum = null;
   renderGrid();
 }
 
@@ -305,8 +361,20 @@ function placeNumber(n) {
   const cell = board[row][col];
   if (cell.fixed) return;
 
+  if (noteMode) {
+    if (cell.value) return; // can't note a filled cell
+    const idx = cell.notes.indexOf(n);
+    if (idx === -1) cell.notes.push(n);
+    else cell.notes.splice(idx, 1);
+    cell.notes.sort((a, b) => a - b);
+    renderGrid();
+    saveGame();
+    return;
+  }
+
   cell.value = n;
   cell.error = n !== cell.solution;
+  cell.notes = [];
 
   renderGrid();
   saveGame();
@@ -328,6 +396,7 @@ function eraseCell() {
   if (cell.fixed) return;
   cell.value = null;
   cell.error = false;
+  cell.notes = [];
   renderGrid();
   saveGame();
 }
@@ -401,17 +470,28 @@ function endGame() {
 
 // Build numpad
 const numpad = document.getElementById("numpad");
+const numButtons = {};
 for (let n = 1; n <= 9; n++) {
   const btn = document.createElement("button");
   btn.textContent = n;
   btn.addEventListener("click", () => placeNumber(n));
   numpad.appendChild(btn);
+  numButtons[n] = btn;
 }
 const eraseBtn = document.createElement("button");
 eraseBtn.textContent = "Erase";
 eraseBtn.className = "erase";
 eraseBtn.addEventListener("click", eraseCell);
 numpad.appendChild(eraseBtn);
+
+const noteBtn = document.createElement("button");
+noteBtn.textContent = "Notes";
+noteBtn.className = "note-toggle";
+noteBtn.addEventListener("click", () => {
+  noteMode = !noteMode;
+  noteBtn.classList.toggle("active", noteMode);
+});
+numpad.appendChild(noteBtn);
 
 // Keyboard support
 document.addEventListener("keydown", (e) => {
