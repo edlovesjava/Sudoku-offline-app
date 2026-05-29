@@ -72,6 +72,40 @@ def test_notes_toggle_is_visible_and_stateful(page, live_server):
     assert pressed_again == "false"
 
 
+def test_manifest_and_service_worker_are_registered(page, live_server):
+    page.goto(live_server)
+
+    manifest_href = page.evaluate(
+        """
+        () => document.querySelector('link[rel="manifest"]')?.getAttribute('href') || null
+        """
+    )
+    assert manifest_href == "/static/manifest.webmanifest"
+
+    page.wait_for_function(
+        """
+        async () => {
+          if (!('serviceWorker' in navigator)) {
+            return false;
+          }
+          const registration = await navigator.serviceWorker.getRegistration('/static/');
+          return Boolean(registration && registration.active);
+        }
+        """
+    )
+
+    script_url = page.evaluate(
+        """
+        async () => {
+          const registration = await navigator.serviceWorker.getRegistration('/static/');
+          return registration?.active?.scriptURL || null;
+        }
+        """
+    )
+    assert script_url is not None
+    assert script_url.endswith("/static/sw.js")
+
+
 def test_offline_uses_local_provider_before_backend(page, live_server):
     page.goto(live_server)
     page.context.set_offline(True)

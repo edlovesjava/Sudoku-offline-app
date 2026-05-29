@@ -493,10 +493,23 @@ function bindLongPressMultiSelect() {
   paint();
 }
 
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) {
+    return;
+  }
+
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/static/sw.js").catch(() => {
+      // Ignore registration errors to avoid interrupting gameplay.
+    });
+  });
+}
+
 bindNotesToggle();
 bindLongPressMultiSelect();
 ensureDebugState();
 bindPuzzleProvider();
 const runTracking = bindRunTracking();
 bindCandidateHints(runTracking);
+registerServiceWorker();
 window.__sudokuProfile = DEFAULT_PROFILE;
