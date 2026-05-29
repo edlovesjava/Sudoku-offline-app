@@ -1,4 +1,5 @@
 import { assertPuzzlePackage } from "./schemas.js";
+import { generateBrowserPuzzle } from "./generator.js";
 
 const OFFLINE_PACK_FALLBACK = [
   {
@@ -13,12 +14,11 @@ const OFFLINE_PACK_FALLBACK = [
 
 async function tryBrowser(rank) {
   try {
-    const browserGenerator = globalThis.__sudokuBrowserGenerator;
-    if (typeof browserGenerator !== "function") {
+    if (globalThis.__sudokuDebug?.disableBrowserProvider) {
       return null;
     }
 
-    return (await browserGenerator(rank)) ?? null;
+    return generateBrowserPuzzle(rank);
   } catch {
     return null;
   }

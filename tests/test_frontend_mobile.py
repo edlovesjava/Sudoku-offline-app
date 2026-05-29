@@ -89,6 +89,7 @@ def test_backend_reachable_when_local_providers_unavailable(page, live_server):
     )
 
     page.goto(live_server)
+    page.evaluate("window.__sudokuDebug.disableBrowserProvider = true")
     page.click("#newGame")
     page.wait_for_function("window.__sudokuDebug?.lastPuzzleSource !== null")
     source = page.evaluate("window.__sudokuDebug?.lastPuzzleSource ?? null")
@@ -110,7 +111,9 @@ def test_invalid_local_pack_falls_through_to_backend(page, live_server):
     )
 
     page.goto(live_server)
-    page.evaluate("window.__sudokuDebug.lastPuzzleSource = null")
+    page.evaluate(
+        "window.__sudokuDebug.lastPuzzleSource = null; window.__sudokuDebug.disableBrowserProvider = true"
+    )
     page.click("#newGame")
     page.wait_for_function("window.__sudokuDebug?.lastPuzzleSource === 'backend'")
     source = page.evaluate("window.__sudokuDebug?.lastPuzzleSource ?? null")
@@ -143,6 +146,7 @@ def test_cache_fallback_sets_source_telemetry(page, live_server):
           }
         ]));
         window.__sudokuDebug.lastPuzzleSource = null;
+        window.__sudokuDebug.disableBrowserProvider = true;
         """
     )
 
@@ -151,3 +155,63 @@ def test_cache_fallback_sets_source_telemetry(page, live_server):
     source = page.evaluate("window.__sudokuDebug?.lastPuzzleSource ?? null")
 
     assert source == "cache"
+
+
+def test_browser_generator_returns_valid_grid(page, live_server):
+    page.goto(live_server)
+
+    result = page.evaluate(
+        """
+        async () => {
+          const pkg = await window.__sudokuDebug.generatePuzzleForTest(150);
+          const DIGITS = new Set(["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+
+          const fixedMatchesSolution = [...Array(81).keys()].every((idx) => {
+            const value = pkg.grid[idx];
+            return value === "0" || value === pkg.solution[idx];
+          });
+
+          const clueCount = [...pkg.grid].filter((value) => value !== "0").length;
+
+          const units = [];
+          for (let row = 0; row < 9; row += 1) {
+            units.push([...Array(9).keys()].map((col) => pkg.solution[(row * 9) + col]));
+          }
+          for (let col = 0; col < 9; col += 1) {
+            units.push([...Array(9).keys()].map((row) => pkg.solution[(row * 9) + col]));
+          }
+          for (let boxRow = 0; boxRow < 3; boxRow += 1) {
+            for (let boxCol = 0; boxCol < 3; boxCol += 1) {
+              const box = [];
+              for (let row = 0; row < 3; row += 1) {
+                for (let col = 0; col < 3; col += 1) {
+                  const idx = ((boxRow * 3 + row) * 9) + (boxCol * 3 + col);
+                  box.push(pkg.solution[idx]);
+                }
+              }
+              units.push(box);
+            }
+          }
+
+          const validSolution = units.every((unit) => {
+            if (unit.length !== 9) {
+              return false;
+            }
+            const seen = new Set(unit);
+            return seen.size === 9 && [...seen].every((digit) => DIGITS.has(digit));
+          });
+
+          return { pkg, fixedMatchesSolution, clueCount, validSolution };
+        }
+        """
+    )
+
+    pkg = result["pkg"]
+    assert pkg["schemaVersion"] == 1
+    assert pkg["source"] == "browser"
+    assert pkg["difficulty"] == 150
+    assert len(pkg["grid"]) == 81
+    assert len(pkg["solution"]) == 81
+    assert result["clueCount"] >= 22
+    assert result["fixedMatchesSolution"] is True
+    assert result["validSolution"] is True

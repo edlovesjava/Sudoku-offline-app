@@ -1,10 +1,13 @@
 import { DEFAULT_PROFILE } from "./config.js";
 import { loadPuzzle } from "./providers.js";
+import { generateBrowserPuzzle } from "./generator.js";
 
 function ensureDebugState() {
   window.__sudokuDebug = {
     ...(window.__sudokuDebug || {}),
     lastPuzzleSource: null,
+    disableBrowserProvider: Boolean(window.__sudokuDebug?.disableBrowserProvider),
+    generatePuzzleForTest: (rank) => generateBrowserPuzzle(rank),
   };
 }
 
