@@ -431,10 +431,12 @@ async function newGame() {
   btn.textContent = "Loading...";
 
   let puzzle = null;
+  let usedCacheFallback = false;
   try {
     puzzle = await window.fetchPuzzle(rank);
   } catch {
     puzzle = pullFromCache(rank);
+    usedCacheFallback = Boolean(puzzle);
   }
 
   if (!puzzle) {
@@ -447,6 +449,10 @@ async function newGame() {
   initBoard(puzzle.initial_grid, puzzle.solution_key);
   startTimer();
   gameActive = true;
+  if (usedCacheFallback) {
+    window.__sudokuDebug = window.__sudokuDebug || {};
+    window.__sudokuDebug.lastPuzzleSource = "cache";
+  }
   btn.textContent = "New Game";
   btn.disabled = false;
 

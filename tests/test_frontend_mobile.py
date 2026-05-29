@@ -94,3 +94,60 @@ def test_backend_reachable_when_local_providers_unavailable(page, live_server):
     source = page.evaluate("window.__sudokuDebug?.lastPuzzleSource ?? null")
 
     assert source == "backend"
+
+
+def test_invalid_local_pack_falls_through_to_backend(page, live_server):
+    page.route(
+        "**/static/packs/default-pack.json",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=(
+                '[{"schemaVersion":1,"puzzleId":"broken-pack","grid":"123",'
+                '"solution":"456","difficulty":100,"source":"pack"}]'
+            ),
+        ),
+    )
+
+    page.goto(live_server)
+    page.evaluate("window.__sudokuDebug.lastPuzzleSource = null")
+    page.click("#newGame")
+    page.wait_for_function("window.__sudokuDebug?.lastPuzzleSource === 'backend'")
+    source = page.evaluate("window.__sudokuDebug?.lastPuzzleSource ?? null")
+
+    assert source == "backend"
+
+
+def test_cache_fallback_sets_source_telemetry(page, live_server):
+    page.route(
+        "**/static/packs/default-pack.json",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=(
+                '[{"schemaVersion":1,"puzzleId":"broken-pack","grid":"123",'
+                '"solution":"456","difficulty":100,"source":"pack"}]'
+            ),
+        ),
+    )
+    page.route("**/puzzle?rank=*", lambda route: route.fulfill(status=503, body="backend down"))
+
+    page.goto(live_server)
+    page.evaluate(
+        """
+        localStorage.setItem("sudoku_cache", JSON.stringify([
+          {
+            difficulty: 100,
+            initial_grid: "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
+            solution_key: "534678912672195348198342567859761423426853791713924856961537284287419635345286179"
+          }
+        ]));
+        window.__sudokuDebug.lastPuzzleSource = null;
+        """
+    )
+
+    page.click("#newGame")
+    page.wait_for_function("window.__sudokuDebug?.lastPuzzleSource === 'cache'")
+    source = page.evaluate("window.__sudokuDebug?.lastPuzzleSource ?? null")
+
+    assert source == "cache"

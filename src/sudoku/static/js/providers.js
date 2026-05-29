@@ -71,11 +71,30 @@ async function tryBackend(rank) {
 }
 
 export async function loadPuzzle({ rank }) {
-  const local = (await tryPack(rank)) ?? (await tryBrowser(rank));
-  if (local) {
-    return { package: assertPuzzlePackage(local), source: local.source };
+  const providers = [
+    { source: "pack", load: () => tryPack(rank) },
+    { source: "browser", load: () => tryBrowser(rank) },
+    { source: "backend", load: () => tryBackend(rank) },
+  ];
+
+  let lastError = null;
+  for (const provider of providers) {
+    try {
+      const candidate = await provider.load();
+      if (!candidate) {
+        continue;
+      }
+
+      const pkg = assertPuzzlePackage(candidate);
+      return { package: pkg, source: candidate.source || provider.source };
+    } catch (error) {
+      lastError = error;
+    }
   }
 
-  const remote = await tryBackend(rank);
-  return { package: assertPuzzlePackage(remote), source: "backend" };
+  if (lastError) {
+    throw lastError;
+  }
+
+  throw new Error("all puzzle providers failed");
 }
