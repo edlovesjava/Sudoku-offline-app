@@ -6,6 +6,7 @@ const BASE_SOLUTION = Array.from({ length: 81 }, (_, idx) => {
 
 const MIN_RANK = 50;
 const MAX_RANK = 500;
+const MAX_UNIQUE_GENERATION_ATTEMPTS = 6;
 
 function randomInt(maxExclusive) {
   if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
@@ -70,10 +71,144 @@ function clueCountForRank(rank) {
   return Math.round(44 - (normalized * 22));
 }
 
+function countBits(mask) {
+  let count = 0;
+  let value = mask;
+  while (value) {
+    value &= value - 1;
+    count += 1;
+  }
+  return count;
+}
+
+function countGridSolutions(grid, limit = 2) {
+  const rowMask = new Uint16Array(9);
+  const colMask = new Uint16Array(9);
+  const boxMask = new Uint16Array(9);
+  const cells = Array.from(grid, (digit) => Number(digit));
+  const empties = [];
+
+  const boxIndex = (row, col) => (Math.floor(row / 3) * 3) + Math.floor(col / 3);
+
+  for (let idx = 0; idx < 81; idx += 1) {
+    const row = Math.floor(idx / 9);
+    const col = idx % 9;
+    const value = cells[idx];
+    if (value === 0) {
+      empties.push(idx);
+      continue;
+    }
+
+    const bit = 1 << value;
+    const box = boxIndex(row, col);
+    if ((rowMask[row] & bit) || (colMask[col] & bit) || (boxMask[box] & bit)) {
+      return 0;
+    }
+
+    rowMask[row] |= bit;
+    colMask[col] |= bit;
+    boxMask[box] |= bit;
+  }
+
+  let solutions = 0;
+
+  const search = () => {
+    if (solutions >= limit) {
+      return;
+    }
+
+    let bestIdx = -1;
+    let bestCandidates = 0;
+    let bestCount = 10;
+
+    for (const idx of empties) {
+      if (cells[idx] !== 0) {
+        continue;
+      }
+
+      const row = Math.floor(idx / 9);
+      const col = idx % 9;
+      const box = boxIndex(row, col);
+      const used = rowMask[row] | colMask[col] | boxMask[box];
+      const available = (~used) & 0x3FE;
+      const candidateCount = countBits(available);
+
+      if (candidateCount === 0) {
+        return;
+      }
+      if (candidateCount < bestCount) {
+        bestCount = candidateCount;
+        bestIdx = idx;
+        bestCandidates = available;
+        if (candidateCount === 1) {
+          break;
+        }
+      }
+    }
+
+    if (bestIdx === -1) {
+      solutions += 1;
+      return;
+    }
+
+    const row = Math.floor(bestIdx / 9);
+    const col = bestIdx % 9;
+    const box = boxIndex(row, col);
+
+    for (let digit = 1; digit <= 9; digit += 1) {
+      const bit = 1 << digit;
+      if ((bestCandidates & bit) === 0) {
+        continue;
+      }
+
+      cells[bestIdx] = digit;
+      rowMask[row] |= bit;
+      colMask[col] |= bit;
+      boxMask[box] |= bit;
+
+      search();
+
+      cells[bestIdx] = 0;
+      rowMask[row] &= ~bit;
+      colMask[col] &= ~bit;
+      boxMask[box] &= ~bit;
+
+      if (solutions >= limit) {
+        return;
+      }
+    }
+  };
+
+  search();
+  return solutions;
+}
+
 function carvePuzzleGrid(solution, clueCount) {
+  const cells = [...solution];
   const indices = shuffle(Array.from({ length: 81 }, (_, idx) => idx));
-  const keep = new Set(indices.slice(0, clueCount));
-  return Array.from(solution, (digit, idx) => (keep.has(idx) ? digit : "0")).join("");
+  let clues = 81;
+
+  for (const idx of indices) {
+    if (clues <= clueCount) {
+      break;
+    }
+
+    const previous = cells[idx];
+    cells[idx] = "0";
+
+    if (countGridSolutions(cells.join(""), 2) !== 1) {
+      cells[idx] = previous;
+      continue;
+    }
+
+    clues -= 1;
+  }
+
+  if (clues > clueCount) {
+    return null;
+  }
+
+  return cells.join("");
 }
 
 function createPuzzleId() {
@@ -82,15 +217,24 @@ function createPuzzleId() {
 
 export function generateBrowserPuzzle(rank = 150) {
   const normalizedRank = clampRank(rank);
-  const solution = createSolvedGridString();
-  const grid = carvePuzzleGrid(solution, clueCountForRank(normalizedRank));
+  const clueCount = clueCountForRank(normalizedRank);
 
-  return {
-    schemaVersion: 1,
-    puzzleId: createPuzzleId(),
-    grid,
-    solution,
-    difficulty: normalizedRank,
-    source: "browser",
-  };
+  for (let attempt = 0; attempt < MAX_UNIQUE_GENERATION_ATTEMPTS; attempt += 1) {
+    const solution = createSolvedGridString();
+    const grid = carvePuzzleGrid(solution, clueCount);
+    if (!grid) {
+      continue;
+    }
+
+    return {
+      schemaVersion: 1,
+      puzzleId: createPuzzleId(),
+      grid,
+      solution,
+      difficulty: normalizedRank,
+      source: "browser",
+    };
+  }
+
+  return null;
 }

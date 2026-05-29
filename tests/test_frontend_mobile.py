@@ -215,3 +215,141 @@ def test_browser_generator_returns_valid_grid(page, live_server):
     assert result["clueCount"] >= 22
     assert result["fixedMatchesSolution"] is True
     assert result["validSolution"] is True
+
+
+def test_browser_generator_produces_unique_solution_puzzles(page, live_server):
+    page.goto(live_server)
+
+    result = page.evaluate(
+        """
+        async () => {
+          const countSolutions = (grid, limit = 2) => {
+            const rowMask = new Uint16Array(9);
+            const colMask = new Uint16Array(9);
+            const boxMask = new Uint16Array(9);
+            const cells = [...grid].map((digit) => Number(digit));
+            const empties = [];
+
+            const bitFor = (digit) => 1 << digit;
+            const boxIndex = (row, col) => (Math.floor(row / 3) * 3) + Math.floor(col / 3);
+
+            for (let idx = 0; idx < 81; idx += 1) {
+              const row = Math.floor(idx / 9);
+              const col = idx % 9;
+              const value = cells[idx];
+              if (value === 0) {
+                empties.push(idx);
+                continue;
+              }
+
+              const bit = bitFor(value);
+              const box = boxIndex(row, col);
+              if ((rowMask[row] & bit) || (colMask[col] & bit) || (boxMask[box] & bit)) {
+                return 0;
+              }
+
+              rowMask[row] |= bit;
+              colMask[col] |= bit;
+              boxMask[box] |= bit;
+            }
+
+            let solutions = 0;
+            const search = () => {
+              if (solutions >= limit) {
+                return;
+              }
+
+              let bestIdx = -1;
+              let bestCandidates = 0;
+              let bestCount = 10;
+
+              for (const idx of empties) {
+                if (cells[idx] !== 0) {
+                  continue;
+                }
+
+                const row = Math.floor(idx / 9);
+                const col = idx % 9;
+                const box = boxIndex(row, col);
+                const used = rowMask[row] | colMask[col] | boxMask[box];
+                const available = (~used) & 0x3FE;
+                const count = available ? available.toString(2).replace(/0/g, "").length : 0;
+
+                if (count === 0) {
+                  return;
+                }
+                if (count < bestCount) {
+                  bestCount = count;
+                  bestIdx = idx;
+                  bestCandidates = available;
+                  if (count === 1) {
+                    break;
+                  }
+                }
+              }
+
+              if (bestIdx === -1) {
+                solutions += 1;
+                return;
+              }
+
+              const row = Math.floor(bestIdx / 9);
+              const col = bestIdx % 9;
+              const box = boxIndex(row, col);
+              for (let digit = 1; digit <= 9; digit += 1) {
+                const bit = bitFor(digit);
+                if ((bestCandidates & bit) === 0) {
+                  continue;
+                }
+
+                cells[bestIdx] = digit;
+                rowMask[row] |= bit;
+                colMask[col] |= bit;
+                boxMask[box] |= bit;
+
+                search();
+
+                cells[bestIdx] = 0;
+                rowMask[row] &= ~bit;
+                colMask[col] &= ~bit;
+                boxMask[box] &= ~bit;
+
+                if (solutions >= limit) {
+                  return;
+                }
+              }
+            };
+
+            search();
+            return solutions;
+          };
+
+          const sampleSize = 6;
+          const failures = [];
+          let generatedCount = 0;
+          let nullCount = 0;
+          for (let idx = 0; idx < sampleSize; idx += 1) {
+            const pkg = await window.__sudokuDebug.generatePuzzleForTest(500);
+            if (!pkg) {
+              nullCount += 1;
+              continue;
+            }
+
+            generatedCount += 1;
+            const solutions = countSolutions(pkg.grid, 2);
+            if (solutions !== 1) {
+              failures.push({
+                puzzleId: pkg.puzzleId,
+                clues: [...pkg.grid].filter((value) => value !== "0").length,
+                solutions,
+              });
+            }
+          }
+
+          return { sampleSize, failures, generatedCount, nullCount };
+        }
+        """
+    )
+
+    assert result["generatedCount"] > 0
+    assert result["failures"] == []
