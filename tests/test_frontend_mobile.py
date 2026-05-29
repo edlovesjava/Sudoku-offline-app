@@ -353,3 +353,61 @@ def test_browser_generator_produces_unique_solution_puzzles(page, live_server):
 
     assert result["generatedCount"] > 0
     assert result["failures"] == []
+
+
+def test_long_press_multi_select_and_bulk_number_fill(page, live_server):
+    page.goto(live_server)
+    page.wait_for_selector("#grid .cell")
+
+    editable_indexes = page.evaluate(
+        """
+        () => {
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          return cells
+            .map((cell, idx) => ({ idx, fixed: cell.classList.contains('fixed') }))
+            .filter((entry) => !entry.fixed)
+            .slice(0, 2)
+            .map((entry) => entry.idx);
+        }
+        """
+    )
+    assert len(editable_indexes) == 2
+
+    first = page.locator("#grid .cell").nth(editable_indexes[0])
+    second = page.locator("#grid .cell").nth(editable_indexes[1])
+
+    first_box = first.bounding_box()
+    assert first_box is not None
+    page.mouse.move(first_box["x"] + (first_box["width"] / 2), first_box["y"] + (first_box["height"] / 2))
+    page.mouse.down()
+    page.wait_for_timeout(450)
+    page.mouse.up()
+
+    second.click()
+    page.get_by_role("button", name="7", exact=True).click()
+
+    values = page.evaluate(
+        f"""
+        () => {{
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          return [cells[{editable_indexes[0]}].textContent.trim(), cells[{editable_indexes[1]}].textContent.trim()];
+        }}
+        """
+    )
+    assert values == ["7", "7"]
+
+    page.get_by_role("button", name="Erase").click()
+    page.get_by_role("button", name="Notes").click()
+    page.get_by_role("button", name="4", exact=True).click()
+
+    notes_applied = page.evaluate(
+        f"""
+        () => {{
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          const firstHasNote = cells[{editable_indexes[0]}].querySelector('.note-4') !== null;
+          const secondHasNote = cells[{editable_indexes[1]}].querySelector('.note-4') !== null;
+          return [firstHasNote, secondHasNote];
+        }}
+        """
+    )
+    assert notes_applied == [True, True]
