@@ -1,5 +1,16 @@
 import { assertPuzzlePackage } from "./schemas.js";
 
+const OFFLINE_PACK_FALLBACK = [
+  {
+    schemaVersion: 1,
+    puzzleId: "pack-easy-001",
+    grid: "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
+    solution: "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
+    difficulty: 100,
+    source: "pack",
+  },
+];
+
 async function tryBrowser(rank) {
   try {
     const browserGenerator = globalThis.__sudokuBrowserGenerator;
@@ -14,31 +25,32 @@ async function tryBrowser(rank) {
 }
 
 async function tryPack(rank) {
+  let pack = null;
+
   try {
     const response = await fetch("/static/packs/default-pack.json", { cache: "no-store" });
-    if (!response.ok) {
-      return null;
+    if (response.ok) {
+      pack = await response.json();
     }
-
-    const pack = await response.json();
-    if (!Array.isArray(pack) || pack.length === 0) {
-      return null;
-    }
-
-    let best = null;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    for (const candidate of pack) {
-      const distance = Math.abs(Number(candidate.difficulty || 0) - rank);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = candidate;
-      }
-    }
-
-    return best ?? null;
   } catch {
+    pack = OFFLINE_PACK_FALLBACK;
+  }
+
+  if (!Array.isArray(pack) || pack.length === 0) {
     return null;
   }
+
+  let best = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const candidate of pack) {
+    const distance = Math.abs(Number(candidate.difficulty || 0) - rank);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = candidate;
+    }
+  }
+
+  return best ?? null;
 }
 
 async function tryBackend(rank) {

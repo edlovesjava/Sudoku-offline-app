@@ -212,11 +212,11 @@ function getCache() {
 function setCache(c) { localStorage.setItem(CACHE_KEY, JSON.stringify(c)); }
 function updateCacheUI() { document.getElementById("cacheCount").textContent = getCache().length; }
 
-async function fetchPuzzle(rank) {
+window.fetchPuzzle = async function fetchPuzzle(rank) {
   const res = await fetch(`/puzzle?rank=${rank}`);
   if (!res.ok) throw new Error("fetch failed");
   return res.json();
-}
+};
 
 async function fillCache() {
   const cache = getCache();
@@ -225,7 +225,7 @@ async function fillCache() {
   const ranks = [100, 150, 150, 300, 450];
   for (let i = 0; i < need; i++) {
     try {
-      const puzzle = await fetchPuzzle(ranks[i % ranks.length]);
+      const puzzle = await window.fetchPuzzle(ranks[i % ranks.length]);
       cache.push(puzzle);
     } catch { break; }
   }
@@ -432,7 +432,7 @@ async function newGame() {
 
   let puzzle = null;
   try {
-    puzzle = await fetchPuzzle(rank);
+    puzzle = await window.fetchPuzzle(rank);
   } catch {
     puzzle = pullFromCache(rank);
   }

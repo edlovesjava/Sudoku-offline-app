@@ -14,6 +14,10 @@ function bindPuzzleProvider() {
   }
 
   window.fetchPuzzle = async (rank) => {
+    if (!navigator.onLine) {
+      window.__sudokuDebug.lastPuzzleSource = "pack";
+    }
+
     const { package: pkg, source } = await loadPuzzle({ rank });
     window.__sudokuDebug.lastPuzzleSource = source;
     return {
