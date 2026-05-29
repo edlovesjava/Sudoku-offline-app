@@ -2,7 +2,6 @@ import { DEFAULT_PROFILE } from "./config.js";
 import { loadPuzzle } from "./providers.js";
 import { generateBrowserPuzzle } from "./generator.js";
 import { createLongPressHelper } from "./input.js";
-import { buildCandidateHint } from "./rules.js";
 import {
   loadRunState,
   loadRunStateFromSave,
@@ -86,98 +85,32 @@ function bindRunTracking() {
     }, { capture: true });
   }
 
-  const markHintUsed = () => {
-    runState = {
-      ...runState,
-      assisted: true,
-      hintsUsed: (runState?.hintsUsed || 0) + 1,
-    };
-    persistRunState();
-  };
-
-  return {
-    markHintUsed,
-  };
+  return {};
 }
 
-function bindCandidateHints(runTracking) {
+function bindHintOverlayToggle() {
   if (!DEFAULT_PROFILE?.featureConfig?.candidateHints) {
     return;
   }
 
   const controls = document.querySelector(".controls");
-  const grid = document.getElementById("grid");
-  if (!controls || !grid || document.getElementById("hintBtn")) {
+  if (!controls || document.getElementById("hintOverlayBtn")) {
     return;
   }
 
-  const hintButton = document.createElement("button");
-  hintButton.id = "hintBtn";
-  hintButton.type = "button";
-  hintButton.textContent = "Hint";
-  controls.appendChild(hintButton);
+  let hintOverlayEnabled = false;
+  const overlayButton = document.createElement("button");
+  overlayButton.id = "hintOverlayBtn";
+  overlayButton.type = "button";
+  overlayButton.textContent = "Hint Overlay";
+  overlayButton.setAttribute("aria-pressed", "false");
+  controls.appendChild(overlayButton);
 
-  const hintText = document.createElement("div");
-  hintText.id = "hintText";
-  hintText.setAttribute("aria-live", "polite");
-  hintText.style.margin = "8px 0 0";
-  hintText.style.fontSize = "0.85rem";
-  hintText.style.color = "#93c5fd";
-  hintText.style.textAlign = "center";
-  controls.insertAdjacentElement("afterend", hintText);
-
-  const parseValue = (raw) => (/^[1-9]$/.test(raw) ? Number(raw) : null);
-
-  const readBoardFromGrid = () => {
-    const cells = Array.from(grid.children);
-    const board = [];
-    for (let row = 0; row < 9; row += 1) {
-      const rowCells = [];
-      for (let col = 0; col < 9; col += 1) {
-        const idx = (row * 9) + col;
-        const cell = cells[idx];
-        const value = parseValue(cell?.textContent?.trim() || "");
-        rowCells.push({
-          value,
-          fixed: Boolean(cell?.classList.contains("fixed")),
-        });
-      }
-      board.push(rowCells);
-    }
-    return board;
-  };
-
-  const getSelectedPosition = () => {
-    const selectedCell = grid.querySelector(".cell.selected");
-    if (!selectedCell) {
-      return null;
-    }
-
-    const idx = Array.prototype.indexOf.call(grid.children, selectedCell);
-    if (idx < 0) {
-      return null;
-    }
-
-    return { row: Math.floor(idx / 9), col: idx % 9 };
-  };
-
-  hintButton.addEventListener("click", () => {
-    const pos = getSelectedPosition();
-    if (!pos) {
-      hintText.textContent = "Select an editable empty cell to get candidates.";
-      return;
-    }
-
-    const board = readBoardFromGrid();
-    const cell = board[pos.row][pos.col];
-    if (!cell || cell.fixed || Number.isInteger(cell.value)) {
-      hintText.textContent = "Select an editable empty cell to get candidates.";
-      return;
-    }
-
-    const hint = buildCandidateHint({ board, row: pos.row, col: pos.col });
-    hintText.textContent = hint.text;
-    runTracking?.markHintUsed?.();
+  overlayButton.addEventListener("click", () => {
+    hintOverlayEnabled = !hintOverlayEnabled;
+    overlayButton.setAttribute("aria-pressed", String(hintOverlayEnabled));
+    overlayButton.classList.toggle("active", hintOverlayEnabled);
+    window.renderGrid?.();
   });
 }
 
@@ -510,6 +443,6 @@ bindLongPressMultiSelect();
 ensureDebugState();
 bindPuzzleProvider();
 const runTracking = bindRunTracking();
-bindCandidateHints(runTracking);
+bindHintOverlayToggle();
 registerServiceWorker();
 window.__sudokuProfile = DEFAULT_PROFILE;
