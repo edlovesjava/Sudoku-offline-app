@@ -9,6 +9,7 @@ import {
   saveRunState,
   syncRunStateToSave,
 } from "./storage.js";
+import { getInvalidDigitsForCell } from "./rules.js";
 
 function ensureDebugState() {
   window.__sudokuDebug = {
@@ -112,6 +113,94 @@ function bindHintOverlayToggle() {
     overlayButton.classList.toggle("active", hintOverlayEnabled);
     window.renderGrid?.();
   });
+
+  const ensureOverlayStyles = () => {
+    if (document.getElementById("hint-overlay-style")) {
+      return;
+    }
+
+    const style = document.createElement("style");
+    style.id = "hint-overlay-style";
+    style.textContent = ".numpad button.dimmed{opacity:0.35;}";
+    document.head.appendChild(style);
+  };
+
+  const buildBoardFromGrid = () => {
+    const cells = Array.from(document.querySelectorAll("#grid .cell"));
+    if (cells.length !== 81) {
+      return [];
+    }
+
+    const board = [];
+    for (let row = 0; row < 9; row += 1) {
+      const boardRow = [];
+      for (let col = 0; col < 9; col += 1) {
+        const cell = cells[(row * 9) + col];
+        const hasNotes = Boolean(cell.querySelector(".note"));
+        const text = (cell.textContent || "").trim();
+        const value = hasNotes || !/^[1-9]$/.test(text) ? null : Number(text);
+        boardRow.push({
+          fixed: cell.classList.contains("fixed"),
+          value,
+        });
+      }
+      board.push(boardRow);
+    }
+    return board;
+  };
+
+  const getSelectedCell = () => {
+    if (document.querySelectorAll("#grid .cell.multi-selected").length > 1) {
+      return null;
+    }
+
+    const selectedCell = document.querySelector("#grid .cell.selected");
+    if (!selectedCell || selectedCell.classList.contains("fixed")) {
+      return null;
+    }
+
+    const cells = Array.from(document.querySelectorAll("#grid .cell"));
+    const index = cells.indexOf(selectedCell);
+    if (index < 0) {
+      return null;
+    }
+
+    return {
+      row: Math.floor(index / 9),
+      col: index % 9,
+    };
+  };
+
+  const applyNumpadOverlay = () => {
+    const numpadButtons = Array.from(document.querySelectorAll("#numpad button"));
+    if (numpadButtons.length === 0) {
+      return;
+    }
+
+    const selectedCell = getSelectedCell();
+    const shouldOverlay = hintOverlayEnabled && selectedCell;
+    const invalidDigits = shouldOverlay
+      ? new Set(getInvalidDigitsForCell(buildBoardFromGrid(), selectedCell.row, selectedCell.col))
+      : new Set();
+
+    for (const button of numpadButtons) {
+      const label = (button.textContent || "").trim();
+      const digit = /^[1-9]$/.test(label) ? Number(label) : null;
+      button.classList.toggle("dimmed", digit !== null && invalidDigits.has(digit));
+    }
+  };
+
+  const originalRenderGrid = window.renderGrid;
+  if (typeof originalRenderGrid === "function") {
+    window.renderGrid = function wrappedRenderGrid(...args) {
+      const result = originalRenderGrid.apply(this, args);
+      applyNumpadOverlay();
+      return result;
+    };
+  }
+
+  ensureOverlayStyles();
+  applyNumpadOverlay();
 }
 
 function bindNotesToggle() {

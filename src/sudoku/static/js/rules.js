@@ -44,6 +44,17 @@ export function getCellCandidates(board, row, col) {
   return candidates;
 }
 
+export function getInvalidDigitsForCell(board, row, col) {
+  const candidates = new Set(getCellCandidates(board, row, col));
+  const invalidDigits = [];
+  for (let digit = 1; digit <= 9; digit += 1) {
+    if (!candidates.has(digit)) {
+      invalidDigits.push(digit);
+    }
+  }
+  return invalidDigits;
+}
+
 export function buildCandidateHint({ board, row, col }) {
   const candidates = getCellCandidates(board, row, col);
   const cellId = `R${row + 1}C${col + 1}`;

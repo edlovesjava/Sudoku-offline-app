@@ -82,6 +82,21 @@ def test_hint_overlay_toggle_defaults_off_and_toggles(page, live_server):
     assert toggle.get_attribute("aria-pressed") == "true"
 
 
+def test_overlay_dims_invalid_digits_but_keeps_them_tappable(page, live_server):
+    page.goto(live_server)
+    page.get_by_role("button", name="Hint Overlay").click()
+    page.locator("#grid .cell:not(.fixed)").first.click()
+
+    dimmed_buttons = page.locator("#numpad button.dimmed")
+    assert dimmed_buttons.count() > 0
+
+    first_dimmed = dimmed_buttons.first
+    digit = first_dimmed.text_content().strip()
+    first_dimmed.click()
+
+    assert page.locator("#grid .cell.selected").text_content().strip() == digit
+
+
 def test_manifest_and_service_worker_are_registered(page, live_server):
     page.goto(live_server)
 
@@ -602,4 +617,3 @@ def test_new_game_clears_long_press_multi_select_state(page, live_server):
         """
     )
     assert post_new_game_values == ["6", ""]
-
