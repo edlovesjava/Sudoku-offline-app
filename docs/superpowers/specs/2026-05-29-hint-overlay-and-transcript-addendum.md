@@ -8,6 +8,12 @@ Parent spec: `docs/superpowers/specs/2026-05-29-sudoku-mobile-pwa-enhancement-de
 
 This addendum refines the v1 hint experience based on usage feedback and adds a lightweight event transcript foundation for future coaching and competition analysis.
 
+## 1.1) Visual mockup
+
+![Hint Overlay mockup](assets/hint-overlay-mockup.png)
+
+Figure: Proposed `Hint Overlay` ON state. Invalid digits are dimmed for the selected editable cell but remain tappable.
+
 ## 2) Scope Changes
 
 ### 2.1 Replace one-shot hint UX
