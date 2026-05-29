@@ -499,7 +499,7 @@ function registerServiceWorker() {
   }
 
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/static/sw.js").catch(() => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {
       // Ignore registration errors to avoid interrupting gameplay.
     });
   });

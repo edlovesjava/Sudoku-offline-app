@@ -2,6 +2,9 @@ const APP_SHELL_CACHE = "sudoku-app-shell-v1";
 const APP_SHELL_URLS = [
   "/",
   "/static/manifest.webmanifest",
+  "/static/icons/icon-192.png",
+  "/static/icons/icon-512.png",
+  "/static/icons/icon-512-maskable.png",
   "/static/js/app.js",
   "/static/js/config.js",
   "/static/js/generator.js",
@@ -10,7 +13,6 @@ const APP_SHELL_URLS = [
   "/static/js/rules.js",
   "/static/js/schemas.js",
   "/static/js/storage.js",
-  "/static/packs/default-pack.json",
 ];
 
 self.addEventListener("install", (event) => {
@@ -34,6 +36,11 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") {
+    return;
+  }
+
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.pathname.startsWith("/puzzle") || requestUrl.pathname.startsWith("/static/packs/")) {
     return;
   }
 

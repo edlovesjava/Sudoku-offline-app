@@ -82,6 +82,29 @@ def test_manifest_and_service_worker_are_registered(page, live_server):
     )
     assert manifest_href == "/static/manifest.webmanifest"
 
+    manifest_icons = page.evaluate(
+        """
+        async () => {
+          const response = await fetch('/static/manifest.webmanifest');
+          const manifest = await response.json();
+          return manifest.icons || [];
+        }
+        """
+    )
+
+    assert any(
+        icon.get("sizes") == "192x192" and icon.get("src")
+        for icon in manifest_icons
+    )
+    assert any(
+        icon.get("sizes") == "512x512" and icon.get("src")
+        for icon in manifest_icons
+    )
+    assert any(
+        icon.get("sizes") == "512x512" and "maskable" in (icon.get("purpose") or "")
+        for icon in manifest_icons
+    )
+
     registration_details = page.evaluate(
         """
         async () => {
@@ -96,7 +119,7 @@ def test_manifest_and_service_worker_are_registered(page, live_server):
               const workers = [registration.active, registration.installing, registration.waiting];
               const scriptURL = workers.find((worker) => worker?.scriptURL)?.scriptURL || null;
 
-              if (scriptURL && scriptURL.endsWith('/static/sw.js')) {
+              if (scriptURL && scriptURL.endsWith('/sw.js')) {
                 return {
                   scope: registration.scope,
                   scriptURL,
@@ -113,7 +136,40 @@ def test_manifest_and_service_worker_are_registered(page, live_server):
     )
 
     assert registration_details is not None
-    assert registration_details["scriptURL"].endswith("/static/sw.js")
+    assert registration_details["scriptURL"].endswith("/sw.js")
+
+
+def test_service_worker_controls_page_and_offline_reload_serves_app_shell(page, live_server):
+    page.goto(live_server)
+
+    page.wait_for_function(
+        """
+        async () => {
+          if (!('serviceWorker' in navigator)) {
+            return false;
+          }
+
+          const registrations = await navigator.serviceWorker.getRegistrations();
+          return registrations.some((registration) => {
+            const workers = [registration.active, registration.installing, registration.waiting];
+            return workers.some((worker) => worker?.scriptURL?.endsWith('/sw.js'));
+          });
+        }
+        """
+    )
+
+    page.reload()
+    page.wait_for_function(
+        """
+        () => navigator.serviceWorker?.controller?.scriptURL?.endsWith('/sw.js') ?? false
+        """
+    )
+
+    page.context.set_offline(True)
+    page.reload(wait_until="domcontentloaded")
+    page.wait_for_selector("#grid .cell")
+
+    assert page.locator("#grid .cell").count() == 81
 
 
 def test_offline_uses_local_provider_before_backend(page, live_server):
