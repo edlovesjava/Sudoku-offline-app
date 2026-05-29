@@ -411,3 +411,83 @@ def test_long_press_multi_select_and_bulk_number_fill(page, live_server):
         """
     )
     assert notes_applied == [True, True]
+
+
+def test_new_game_clears_long_press_multi_select_state(page, live_server):
+    page.goto(live_server)
+    page.wait_for_selector("#grid .cell")
+
+    editable_indexes = page.evaluate(
+        """
+        () => {
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          return cells
+            .map((cell, idx) => ({ idx, fixed: cell.classList.contains('fixed') }))
+            .filter((entry) => !entry.fixed)
+            .slice(0, 2)
+            .map((entry) => entry.idx);
+        }
+        """
+    )
+    assert len(editable_indexes) == 2
+
+    first = page.locator("#grid .cell").nth(editable_indexes[0])
+    second = page.locator("#grid .cell").nth(editable_indexes[1])
+
+    first_box = first.bounding_box()
+    assert first_box is not None
+    page.mouse.move(first_box["x"] + (first_box["width"] / 2), first_box["y"] + (first_box["height"] / 2))
+    page.mouse.down()
+    page.wait_for_timeout(450)
+    page.mouse.up()
+
+    second.click()
+    page.get_by_role("button", name="8", exact=True).click()
+
+    before_new_game = page.evaluate(
+        f"""
+        () => {{
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          return [cells[{editable_indexes[0]}].textContent.trim(), cells[{editable_indexes[1]}].textContent.trim()];
+        }}
+        """
+    )
+    assert before_new_game == ["8", "8"]
+
+    page.click("#newGame")
+    page.wait_for_function("!document.getElementById('newGame').disabled")
+
+    lingering_multi_selected_count = page.evaluate(
+        "() => document.querySelectorAll('#grid .cell.multi-selected').length"
+    )
+    assert lingering_multi_selected_count == 0
+
+    post_game_editable_indexes = page.evaluate(
+        """
+        () => {
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          return cells
+            .map((cell, idx) => ({ idx, fixed: cell.classList.contains('fixed'), value: cell.textContent.trim() }))
+            .filter((entry) => !entry.fixed && entry.value === '')
+            .slice(0, 2)
+            .map((entry) => entry.idx);
+        }
+        """
+    )
+    assert len(post_game_editable_indexes) == 2
+
+    page.locator("#grid .cell").nth(post_game_editable_indexes[0]).click()
+    page.get_by_role("button", name="6", exact=True).click()
+
+    post_new_game_values = page.evaluate(
+        f"""
+        () => {{
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          return [
+            cells[{post_game_editable_indexes[0]}].textContent.trim(),
+            cells[{post_game_editable_indexes[1]}].textContent.trim(),
+          ];
+        }}
+        """
+    )
+    assert post_new_game_values == ["6", ""]

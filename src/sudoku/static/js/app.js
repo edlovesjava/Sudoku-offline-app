@@ -93,6 +93,12 @@ function bindLongPressMultiSelect() {
     state.orderedKeys = [];
   };
 
+  const resetState = () => {
+    clearSelection();
+    state.suppressKey = null;
+    state.suppressUntil = 0;
+  };
+
   const getPrimary = () => {
     const key = state.orderedKeys[state.orderedKeys.length - 1] || null;
     return key ? parseKey(key) : null;
@@ -131,6 +137,8 @@ function bindLongPressMultiSelect() {
 
   const originalPlaceNumber = window.placeNumber;
   const originalEraseCell = window.eraseCell;
+  const originalInitBoard = window.initBoard;
+  const originalLoadSavedGame = window.loadSavedGame;
 
   const applyBulk = (operation) => {
     if (!state.active || state.keys.size < 2 || typeof window.selectCell !== "function") {
@@ -170,6 +178,24 @@ function bindLongPressMultiSelect() {
         return;
       }
       originalEraseCell.call(window);
+    };
+  }
+
+  if (typeof originalInitBoard === "function") {
+    window.initBoard = function wrappedInitBoard(...args) {
+      resetState();
+      const result = originalInitBoard.apply(this, args);
+      paint();
+      return result;
+    };
+  }
+
+  if (typeof originalLoadSavedGame === "function") {
+    window.loadSavedGame = function wrappedLoadSavedGame(...args) {
+      resetState();
+      const result = originalLoadSavedGame.apply(this, args);
+      paint();
+      return result;
     };
   }
 
