@@ -33,38 +33,89 @@ function bindPuzzleProvider() {
   window.fetchPuzzle = async (rank) => {
     const { package: pkg, source } = await loadPuzzle({ rank });
     window.__sudokuDebug.lastPuzzleSource = source;
+    if (typeof pkg?.puzzleId === "string" && pkg.puzzleId) {
+      window.__sudokuDebug.lastPuzzleId = pkg.puzzleId;
+    }
     return {
       difficulty: pkg.difficulty,
       initial_grid: pkg.grid,
       solution_key: pkg.solution,
+      puzzleId: pkg.puzzleId,
     };
   };
 }
 
 function bindRunTracking() {
+  const createRunId = () => `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const getElapsedMs = () => {
+    try {
+      const save = JSON.parse(localStorage.getItem("sudoku_save") || "null");
+      const timerElapsed = Number(save?.timerElapsed);
+      if (Number.isFinite(timerElapsed) && timerElapsed >= 0) {
+        return Math.floor(timerElapsed * 1000);
+      }
+    } catch {
+    }
+    return 0;
+  };
+
   let runState = loadRunStateFromSave() || loadRunState() || resetRunState();
-  runState = saveRunState(runState);
+  runState = saveRunState({
+    ...runState,
+    runId: runState.runId || createRunId(),
+    puzzleId: runState.puzzleId || "unknown",
+    transcriptTruncated: Boolean(runState.transcriptTruncated),
+  });
   syncRunStateToSave(runState);
 
+  const ensureRunIdentity = () => {
+    if (!runState.runId) {
+      runState = {
+        ...runState,
+        runId: createRunId(),
+      };
+    }
+    if (!runState.puzzleId) {
+      runState = {
+        ...runState,
+        puzzleId: "unknown",
+      };
+    }
+  };
+
   const resetAndPersistRunState = () => {
-    runState = resetRunState();
+    runState = {
+      ...resetRunState(),
+      runId: createRunId(),
+      puzzleId: "unknown",
+      transcriptTruncated: false,
+    };
+    persistRunState();
   };
 
   const persistRunState = () => {
+    ensureRunIdentity();
     runState = saveRunState(runState);
     syncRunStateToSave(runState);
   };
 
   const recordEvent = (eventType, payload = {}) => {
+    ensureRunIdentity();
     const nextEvent = {
-      timestamp: new Date().toISOString(),
+      schemaVersion: 1,
+      runId: runState.runId,
+      puzzleId: runState.puzzleId,
+      eventTime: new Date().toISOString(),
+      elapsedMs: getElapsedMs(),
       eventType,
+      payload,
       ...payload,
     };
-    const { transcript } = appendTranscriptEvent(runState.transcript, nextEvent);
+    const { transcript, truncated } = appendTranscriptEvent(runState.transcript, nextEvent);
     runState = {
       ...runState,
       transcript,
+      transcriptTruncated: Boolean(runState.transcriptTruncated || truncated),
     };
     persistRunState();
   };
@@ -106,7 +157,16 @@ function bindRunTracking() {
   if (typeof originalNewGame === "function") {
     window.newGame = async function wrappedNewGame(...args) {
       resetForNewRun(true);
-      return originalNewGame.apply(this, args);
+      const result = await originalNewGame.apply(this, args);
+      const latestPuzzleId = window.__sudokuDebug?.lastPuzzleId;
+      if (typeof latestPuzzleId === "string" && latestPuzzleId) {
+        runState = {
+          ...runState,
+          puzzleId: latestPuzzleId,
+        };
+        persistRunState();
+      }
+      return result;
     };
   }
 

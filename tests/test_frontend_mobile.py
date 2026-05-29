@@ -144,6 +144,20 @@ def test_transcript_records_core_events(page, live_server):
     events = page.evaluate(
         "(JSON.parse(localStorage.getItem('sudoku_run') || '{}').transcript || [])"
     )
+    assert events
+
+    required_fields = {
+        "schemaVersion",
+        "runId",
+        "puzzleId",
+        "eventTime",
+        "elapsedMs",
+        "eventType",
+        "payload",
+    }
+    for event in events:
+        assert required_fields.issubset(set(event.keys()))
+
     event_types = [event["eventType"] for event in events]
     assert "cell_selected" in event_types
     assert "value_entered" in event_types
@@ -157,6 +171,9 @@ def test_transcript_is_bounded(page, live_server):
         "(JSON.parse(localStorage.getItem('sudoku_run') || '{}').transcript || []).length"
     )
     assert count <= 1000
+
+    run_state = page.evaluate("JSON.parse(localStorage.getItem('sudoku_run') || '{}')")
+    assert run_state.get("transcriptTruncated") is True
 
 
 def test_manifest_and_service_worker_are_registered(page, live_server):

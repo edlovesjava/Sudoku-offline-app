@@ -17,10 +17,20 @@ function parseJson(raw) {
 }
 
 function normalizeRunState(raw) {
+  const runId = typeof raw?.runId === "string" && raw.runId.trim().length > 0
+    ? raw.runId
+    : null;
+  const puzzleId = typeof raw?.puzzleId === "string" && raw.puzzleId.trim().length > 0
+    ? raw.puzzleId
+    : "unknown";
+
   return {
     schemaVersion: 2,
+    runId,
+    puzzleId,
     assisted: Boolean(raw?.assisted),
     transcript: createTranscript(raw?.transcript),
+    transcriptTruncated: Boolean(raw?.transcriptTruncated),
   };
 }
 
