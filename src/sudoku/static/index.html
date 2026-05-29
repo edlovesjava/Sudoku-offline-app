@@ -87,6 +87,8 @@
   .cell.highlight { background: #1a2d50; }
   .cell.same-number,
   .cell.unavailable-number { background: #2a1a4e; color: #c4b5fd; }
+  .cell.error.same-number,
+  .cell.error.unavailable-number { color: #ef4444; background: #2d1520; }
 
   /* Notes */
   .note {
@@ -197,7 +199,10 @@
 const CACHE_KEY = "sudoku_cache";
 const SAVE_KEY = "sudoku_save";
 const CACHE_SIZE = 5;
-const ENABLE_NUMBER_AVAILABILITY_HINT = true;
+const ENABLE_NUMBER_AVAILABILITY_HINT =
+  typeof window.__SUDOKU_ENABLE_NUMBER_AVAILABILITY_HINT === "boolean"
+    ? window.__SUDOKU_ENABLE_NUMBER_AVAILABILITY_HINT
+    : true;
 
 let board = [];       // {value, fixed, solution, error}
 let selected = null;  // {row, col}
