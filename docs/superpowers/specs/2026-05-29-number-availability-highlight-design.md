@@ -10,6 +10,7 @@ In scope:
 - Use current Sudoku legality only (row/column/box), not solution values.
 - Keep same-number highlighting behavior for cells that already contain the selected number.
 - Add unavailable-cell shading for blank, non-fixed cells that cannot take the selected number.
+- Gate the feature behind a frontend flag that defaults to enabled.
 
 Out of scope:
 - Solver-based hinting.
@@ -36,12 +37,20 @@ Behavior:
 - Does not inspect `solution`.
 - Used for visualization only.
 
+### 1b) Add feature flag (default on)
+
+Add a frontend constant (for example, `ENABLE_NUMBER_AVAILABILITY_HINT = true`) near other game constants.
+
+Behavior:
+- When `true`, availability shading logic is active.
+- When `false`, app keeps current behavior (same-number highlight only, no unavailable-cell shading).
+
 ### 2) Extend render-time class assignment
 
 In `renderGrid()`:
 
 - Keep existing class logic (`fixed`, `error`, `selected`, `highlight`, `same-number`).
-- When `highlightNum` is active and the cell is blank + non-fixed:
+- When feature flag is enabled, `highlightNum` is active, and the cell is blank + non-fixed:
   - If `canPlaceNumber(r, c, highlightNum)` is `false`, add `.unavailable-number`.
   - If `true`, do not add availability shading.
 
@@ -62,7 +71,7 @@ Notes:
 3. `renderGrid()` runs.
 4. For each cell:
    - mark existing `n` values with `.same-number`;
-   - for blank non-fixed cells, call `canPlaceNumber(...)` and mark illegal ones with `.unavailable-number`.
+   - if feature flag is on, for blank non-fixed cells, call `canPlaceNumber(...)` and mark illegal ones with `.unavailable-number`.
 5. Board visuals immediately reflect current legality.
 
 ## Interaction Rules
@@ -70,6 +79,7 @@ Notes:
 - Highlight mode still turns off when fixed number is clicked again.
 - Selecting editable cells clears `highlightNum` (existing behavior) unless changed in future work.
 - Availability shading recomputes every render, so placing/erasing values updates legality visualization immediately.
+- If feature flag is switched off, availability shading is skipped while same-number highlighting remains.
 
 ## Error Handling
 
@@ -77,6 +87,7 @@ Notes:
 - No changes to save/load payload structure.
 - No changes to network/cache flow.
 - If highlight is inactive, no availability checks are applied.
+- If feature flag is disabled, no availability checks are applied.
 
 ## Validation Plan (Human Eval)
 
@@ -90,6 +101,7 @@ Checklist:
 - Place/erase values while highlight is active: unavailable shading updates correctly.
 - Repeat on at least two difficulties (e.g., Medium, Hard).
 - Confirm note mode and keyboard navigation still behave normally.
+- Turn feature flag off and verify unavailable shading disappears while same-number highlighting still works.
 
 ## Future Follow-Up
 
