@@ -1,4 +1,5 @@
 import subprocess
+import socket
 import sys
 import time
 from pathlib import Path
@@ -11,6 +12,10 @@ import pytest
 @pytest.fixture
 def live_server():
     root = Path(__file__).resolve().parents[1]
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+
     process = subprocess.Popen(
         [
             sys.executable,
@@ -20,11 +25,11 @@ def live_server():
             "--host",
             "127.0.0.1",
             "--port",
-            "8000",
+            str(port),
         ],
         cwd=root,
     )
-    url = "http://127.0.0.1:8000/"
+    url = f"http://127.0.0.1:{port}/"
     deadline = time.time() + 10
     while time.time() < deadline:
         try:
