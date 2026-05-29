@@ -84,17 +84,36 @@ def test_hint_overlay_toggle_defaults_off_and_toggles(page, live_server):
 
 def test_overlay_dims_invalid_digits_but_keeps_them_tappable(page, live_server):
     page.goto(live_server)
+    page.evaluate(
+        """
+        () => {
+          window.fetchPuzzle = async () => ({
+            difficulty: 150,
+            initial_grid: "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
+            solution_key: "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
+          });
+        }
+        """
+    )
+    page.click("#newGame")
     page.get_by_role("button", name="Hint Overlay").click()
-    page.locator("#grid .cell:not(.fixed)").first.click()
+    page.locator("#grid .cell").nth(2).click()
 
-    dimmed_buttons = page.locator("#numpad button.dimmed")
-    assert dimmed_buttons.count() > 0
+    dimmed_digits = page.evaluate(
+        """
+        () => Array.from(document.querySelectorAll('#numpad button.dimmed'))
+          .map((button) => button.textContent.trim())
+          .filter((label) => /^[1-9]$/.test(label))
+          .sort()
+        """
+    )
+    assert dimmed_digits == ["3", "5", "6", "7", "8", "9"]
 
-    first_dimmed = dimmed_buttons.first
-    digit = first_dimmed.text_content().strip()
-    first_dimmed.click()
+    page.get_by_role("button", name="1").click()
+    assert page.locator("#grid .cell.selected").text_content().strip() == "1"
 
-    assert page.locator("#grid .cell.selected").text_content().strip() == digit
+    dimmed_count_after_fill = page.locator("#numpad button.dimmed").count()
+    assert dimmed_count_after_fill == 0
 
 
 def test_manifest_and_service_worker_are_registered(page, live_server):

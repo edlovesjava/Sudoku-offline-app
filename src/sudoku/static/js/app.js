@@ -100,6 +100,7 @@ function bindHintOverlayToggle() {
   }
 
   let hintOverlayEnabled = false;
+  const SAVE_KEY = "sudoku_save";
   const overlayButton = document.createElement("button");
   overlayButton.id = "hintOverlayBtn";
   overlayButton.type = "button";
@@ -125,10 +126,56 @@ function bindHintOverlayToggle() {
     document.head.appendChild(style);
   };
 
+  const normalizeBoard = (rawBoard) => {
+    if (!Array.isArray(rawBoard) || rawBoard.length !== 9) {
+      return null;
+    }
+
+    const board = [];
+    for (let row = 0; row < 9; row += 1) {
+      const rawRow = rawBoard[row];
+      if (!Array.isArray(rawRow) || rawRow.length !== 9) {
+        return null;
+      }
+
+      const boardRow = [];
+      for (let col = 0; col < 9; col += 1) {
+        const rawCell = rawRow[col] || {};
+        const value = Number.isInteger(rawCell.value) && rawCell.value >= 1 && rawCell.value <= 9
+          ? rawCell.value
+          : null;
+        boardRow.push({
+          fixed: Boolean(rawCell.fixed),
+          value,
+        });
+      }
+      board.push(boardRow);
+    }
+
+    return board;
+  };
+
+  const getBoardFromSave = () => {
+    try {
+      const save = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+      return normalizeBoard(save?.board);
+    } catch {
+      return null;
+    }
+  };
+
+  const getBoardFromRuntime = () => {
+    try {
+      return normalizeBoard(window.eval("typeof board !== 'undefined' ? board : null"));
+    } catch {
+      return null;
+    }
+  };
+
   const buildBoardFromGrid = () => {
     const cells = Array.from(document.querySelectorAll("#grid .cell"));
     if (cells.length !== 81) {
-      return [];
+      return null;
     }
 
     const board = [];
@@ -146,10 +193,15 @@ function bindHintOverlayToggle() {
       }
       board.push(boardRow);
     }
+
     return board;
   };
 
-  const getSelectedCell = () => {
+  const getBoardForOverlay = () => {
+    return getBoardFromRuntime() || getBoardFromSave() || buildBoardFromGrid();
+  };
+
+  const getSelectedCell = (boardState) => {
     if (document.querySelectorAll("#grid .cell.multi-selected").length > 1) {
       return null;
     }
@@ -165,10 +217,14 @@ function bindHintOverlayToggle() {
       return null;
     }
 
-    return {
-      row: Math.floor(index / 9),
-      col: index % 9,
-    };
+    const row = Math.floor(index / 9);
+    const col = index % 9;
+    const stateCell = boardState?.[row]?.[col] || null;
+    if (!stateCell || stateCell.fixed || Number.isInteger(stateCell.value)) {
+      return null;
+    }
+
+    return { row, col };
   };
 
   const applyNumpadOverlay = () => {
@@ -177,10 +233,11 @@ function bindHintOverlayToggle() {
       return;
     }
 
-    const selectedCell = getSelectedCell();
+    const boardState = getBoardForOverlay();
+    const selectedCell = getSelectedCell(boardState);
     const shouldOverlay = hintOverlayEnabled && selectedCell;
     const invalidDigits = shouldOverlay
-      ? new Set(getInvalidDigitsForCell(buildBoardFromGrid(), selectedCell.row, selectedCell.col))
+      ? new Set(getInvalidDigitsForCell(boardState, selectedCell.row, selectedCell.col))
       : new Set();
 
     for (const button of numpadButtons) {
