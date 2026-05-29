@@ -82,28 +82,38 @@ def test_manifest_and_service_worker_are_registered(page, live_server):
     )
     assert manifest_href == "/static/manifest.webmanifest"
 
-    page.wait_for_function(
+    registration_details = page.evaluate(
         """
         async () => {
           if (!('serviceWorker' in navigator)) {
-            return false;
+            return null;
           }
-          const registration = await navigator.serviceWorker.getRegistration('/static/');
-          return Boolean(registration && registration.active);
+
+          const deadline = Date.now() + 5000;
+          while (Date.now() < deadline) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            for (const registration of registrations) {
+              const workers = [registration.active, registration.installing, registration.waiting];
+              const scriptURL = workers.find((worker) => worker?.scriptURL)?.scriptURL || null;
+
+              if (scriptURL && scriptURL.endsWith('/static/sw.js')) {
+                return {
+                  scope: registration.scope,
+                  scriptURL,
+                };
+              }
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 50));
+          }
+
+          return null;
         }
         """
     )
 
-    script_url = page.evaluate(
-        """
-        async () => {
-          const registration = await navigator.serviceWorker.getRegistration('/static/');
-          return registration?.active?.scriptURL || null;
-        }
-        """
-    )
-    assert script_url is not None
-    assert script_url.endswith("/static/sw.js")
+    assert registration_details is not None
+    assert registration_details["scriptURL"].endswith("/static/sw.js")
 
 
 def test_offline_uses_local_provider_before_backend(page, live_server):
