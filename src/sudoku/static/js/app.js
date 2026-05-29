@@ -1,4 +1,28 @@
 import { DEFAULT_PROFILE } from "./config.js";
+import { loadPuzzle } from "./providers.js";
+
+function ensureDebugState() {
+  window.__sudokuDebug = {
+    ...(window.__sudokuDebug || {}),
+    lastPuzzleSource: null,
+  };
+}
+
+function bindPuzzleProvider() {
+  if (typeof window.fetchPuzzle !== "function") {
+    return;
+  }
+
+  window.fetchPuzzle = async (rank) => {
+    const { package: pkg, source } = await loadPuzzle({ rank });
+    window.__sudokuDebug.lastPuzzleSource = source;
+    return {
+      difficulty: pkg.difficulty,
+      initial_grid: pkg.grid,
+      solution_key: pkg.solution,
+    };
+  };
+}
 
 function bindNotesToggle() {
   const noteBtn = document.querySelector(".note-toggle");
@@ -18,4 +42,6 @@ function bindNotesToggle() {
 }
 
 bindNotesToggle();
+ensureDebugState();
+bindPuzzleProvider();
 window.__sudokuProfile = DEFAULT_PROFILE;

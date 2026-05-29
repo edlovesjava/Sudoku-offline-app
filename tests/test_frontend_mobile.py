@@ -70,3 +70,13 @@ def test_notes_toggle_is_visible_and_stateful(page, live_server):
     toggle.click()
     pressed_again = toggle.get_attribute("aria-pressed")
     assert pressed_again == "false"
+
+
+def test_offline_uses_local_provider_before_backend(page, live_server):
+    page.goto(live_server)
+    page.context.set_offline(True)
+
+    page.click("#newGame")
+    source = page.evaluate("window.__sudokuDebug?.lastPuzzleSource ?? null")
+
+    assert source in {"browser", "pack"}
