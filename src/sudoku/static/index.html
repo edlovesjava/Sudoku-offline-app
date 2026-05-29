@@ -85,7 +85,8 @@
   .cell.error { color: #ef4444; background: #2d1520; }
   .cell.correct-flash { animation: flash-green 0.4s; }
   .cell.highlight { background: #1a2d50; }
-  .cell.same-number { background: #2a1a4e; color: #c4b5fd; }
+  .cell.same-number,
+  .cell.unavailable-number { background: #2a1a4e; color: #c4b5fd; }
 
   /* Notes */
   .note {
@@ -339,6 +340,10 @@ function renderGrid() {
         }
       }
       if (highlightNum && b.value === highlightNum) cell.classList.add("same-number");
+      if (ENABLE_NUMBER_AVAILABILITY_HINT && highlightNum && !b.fixed && !b.value &&
+          !canPlaceNumber(r, c, highlightNum)) {
+        cell.classList.add("unavailable-number");
+      }
       if (b.value) {
         cell.textContent = b.value;
       } else if (b.notes && b.notes.length > 0) {
