@@ -220,6 +220,50 @@ def test_same_number_highlight_works_without_unavailable_shading_when_disabled(p
     assert highlight_counts["unavailable"] == 0
 
 
+def test_error_style_precedence_wins_over_number_highlights(page, live_server):
+    page.goto(live_server)
+
+    styles = page.evaluate(
+        """
+        () => {
+          const host = document.getElementById('grid') || document.body;
+          const probe = document.createElement('div');
+          probe.className = 'cell error';
+          host.appendChild(probe);
+
+          const snapshot = () => {
+            const computed = getComputedStyle(probe);
+            return {
+              color: computed.color,
+              backgroundColor: computed.backgroundColor,
+            };
+          };
+
+          const errorOnly = snapshot();
+          probe.classList.add('same-number');
+          const errorPlusSameNumber = snapshot();
+          probe.classList.remove('same-number');
+          probe.classList.add('unavailable-number');
+          const errorPlusUnavailable = snapshot();
+          probe.classList.add('same-number');
+          const errorPlusBoth = snapshot();
+
+          probe.remove();
+          return {
+            errorOnly,
+            errorPlusSameNumber,
+            errorPlusUnavailable,
+            errorPlusBoth,
+          };
+        }
+        """
+    )
+
+    assert styles["errorPlusSameNumber"] == styles["errorOnly"]
+    assert styles["errorPlusUnavailable"] == styles["errorOnly"]
+    assert styles["errorPlusBoth"] == styles["errorOnly"]
+
+
 def test_overlay_preference_persists_across_reload(page, live_server):
     page.goto(live_server)
 
