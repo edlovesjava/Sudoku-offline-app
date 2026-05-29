@@ -7,6 +7,7 @@ const BASE_SOLUTION = Array.from({ length: 81 }, (_, idx) => {
 const MIN_RANK = 50;
 const MAX_RANK = 500;
 const MAX_UNIQUE_GENERATION_ATTEMPTS = 6;
+const MAX_CLUE_FALLBACK_STEPS = 6;
 
 function randomInt(maxExclusive) {
   if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
@@ -217,23 +218,25 @@ function createPuzzleId() {
 
 export function generateBrowserPuzzle(rank = 150) {
   const normalizedRank = clampRank(rank);
-  const clueCount = clueCountForRank(normalizedRank);
+  const targetClueCount = clueCountForRank(normalizedRank);
 
   for (let attempt = 0; attempt < MAX_UNIQUE_GENERATION_ATTEMPTS; attempt += 1) {
     const solution = createSolvedGridString();
-    const grid = carvePuzzleGrid(solution, clueCount);
-    if (!grid) {
-      continue;
-    }
+    for (let fallbackStep = 0; fallbackStep <= MAX_CLUE_FALLBACK_STEPS; fallbackStep += 1) {
+      const grid = carvePuzzleGrid(solution, targetClueCount + fallbackStep);
+      if (!grid) {
+        continue;
+      }
 
-    return {
-      schemaVersion: 1,
-      puzzleId: createPuzzleId(),
-      grid,
-      solution,
-      difficulty: normalizedRank,
-      source: "browser",
-    };
+      return {
+        schemaVersion: 1,
+        puzzleId: createPuzzleId(),
+        grid,
+        solution,
+        difficulty: normalizedRank,
+        source: "browser",
+      };
+    }
   }
 
   return null;

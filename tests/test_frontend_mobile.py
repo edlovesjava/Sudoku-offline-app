@@ -177,6 +177,7 @@ def test_offline_uses_local_provider_before_backend(page, live_server):
     page.context.set_offline(True)
 
     page.click("#newGame")
+    page.wait_for_function("window.__sudokuDebug?.lastPuzzleSource !== null")
     source = page.evaluate("window.__sudokuDebug?.lastPuzzleSource ?? null")
 
     assert source in {"browser", "pack"}
