@@ -6,6 +6,9 @@
    - `.venv/bin/python -m uvicorn src.sudoku.main:app --reload`
 2. Open `http://127.0.0.1:8000`.
 3. Start one Medium game and one Hard game during this checklist.
+4. Feature flag location for this checklist:
+   - File: `src/sudoku/static/index.html`
+   - Constant: `ENABLE_NUMBER_AVAILABILITY_HINT`
 
 ## Cases
 
@@ -40,3 +43,8 @@
    - Add/remove notes in editable cells while a number highlight is active.
    - Use arrow keys to move selection.
    - Expected: note interactions and keyboard navigation still work.
+
+6. Final cleanup and verification
+   - In `src/sudoku/static/index.html`, confirm `ENABLE_NUMBER_AVAILABILITY_HINT = true`.
+   - Review local changes before finishing (`git status --short` and `git diff`).
+   - Expected: flag is reset to default-on and only intended changes remain.
