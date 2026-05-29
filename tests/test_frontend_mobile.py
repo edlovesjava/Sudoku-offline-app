@@ -59,6 +59,14 @@ def test_app_boots_and_shows_grid(page, live_server):
 def test_notes_toggle_is_visible_and_stateful(page, live_server):
     page.goto(live_server)
     toggle = page.get_by_role("button", name="Notes")
+
+    initial_pressed = toggle.get_attribute("aria-pressed")
+    assert initial_pressed == "false"
+
     toggle.click()
     pressed = toggle.get_attribute("aria-pressed")
     assert pressed == "true"
+
+    toggle.click()
+    pressed_again = toggle.get_attribute("aria-pressed")
+    assert pressed_again == "false"

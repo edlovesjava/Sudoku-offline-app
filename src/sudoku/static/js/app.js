@@ -6,12 +6,14 @@ function bindNotesToggle() {
     return;
   }
 
-  let noteMode = noteBtn.classList.contains("active");
-  noteBtn.setAttribute("aria-pressed", String(noteMode));
+  const syncAriaPressed = () => {
+    noteBtn.setAttribute("aria-pressed", String(noteBtn.classList.contains("active")));
+  };
+
+  syncAriaPressed();
 
   noteBtn.addEventListener("click", () => {
-    noteMode = !noteMode;
-    noteBtn.setAttribute("aria-pressed", String(noteMode));
+    queueMicrotask(syncAriaPressed);
   });
 }
 
