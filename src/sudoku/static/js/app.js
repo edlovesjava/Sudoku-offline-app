@@ -12,6 +12,7 @@ import {
   syncRunStateToSave,
 } from "./storage.js";
 import { getInvalidDigitsForCell } from "./rules.js";
+import { appendTranscriptEvent } from "./transcript.js";
 
 function ensureDebugState() {
   window.__sudokuDebug = {
@@ -19,6 +20,8 @@ function ensureDebugState() {
     lastPuzzleSource: null,
     disableBrowserProvider: Boolean(window.__sudokuDebug?.disableBrowserProvider),
     generatePuzzleForTest: (rank) => generateBrowserPuzzle(rank),
+    emitTranscriptSpamForTest:
+      window.__sudokuDebug?.emitTranscriptSpamForTest || (() => 0),
   };
 }
 
@@ -52,6 +55,32 @@ function bindRunTracking() {
     syncRunStateToSave(runState);
   };
 
+  const recordEvent = (eventType, payload = {}) => {
+    const nextEvent = {
+      timestamp: new Date().toISOString(),
+      eventType,
+      ...payload,
+    };
+    const { transcript } = appendTranscriptEvent(runState.transcript, nextEvent);
+    runState = {
+      ...runState,
+      transcript,
+    };
+    persistRunState();
+  };
+
+  const resetForNewRun = (recordRequest = false) => {
+    resetAndPersistRunState();
+    if (recordRequest) {
+      recordEvent("new_game_requested");
+    }
+    recordEvent("run_started");
+  };
+
+  if ((runState.transcript || []).length === 0) {
+    recordEvent("run_started");
+  }
+
   const originalSaveGame = window.saveGame;
   if (typeof originalSaveGame === "function") {
     window.saveGame = function wrappedSaveGame(...args) {
@@ -76,22 +105,61 @@ function bindRunTracking() {
   const originalNewGame = window.newGame;
   if (typeof originalNewGame === "function") {
     window.newGame = async function wrappedNewGame(...args) {
-      resetAndPersistRunState();
+      resetForNewRun(true);
       return originalNewGame.apply(this, args);
+    };
+  }
+
+  const originalSelectCell = window.selectCell;
+  if (typeof originalSelectCell === "function") {
+    window.selectCell = function wrappedSelectCell(row, col, ...rest) {
+      recordEvent("cell_selected", { row, col });
+      return originalSelectCell.call(this, row, col, ...rest);
+    };
+  }
+
+  const originalPlaceNumber = window.placeNumber;
+  if (typeof originalPlaceNumber === "function") {
+    window.placeNumber = function wrappedPlaceNumber(value, ...rest) {
+      const selectedCell = document.querySelector("#grid .cell.selected");
+      const cells = Array.from(document.querySelectorAll("#grid .cell"));
+      const idx = selectedCell ? cells.indexOf(selectedCell) : -1;
+      if (idx >= 0) {
+        recordEvent("value_entered", {
+          row: Math.floor(idx / 9),
+          col: idx % 9,
+          value,
+          mode: document.querySelector(".note-toggle")?.classList.contains("active")
+            ? "notes"
+            : "number",
+        });
+      }
+      return originalPlaceNumber.call(this, value, ...rest);
     };
   }
 
   const newGameButton = document.getElementById("newGame");
   if (newGameButton) {
     newGameButton.addEventListener("click", () => {
-      resetAndPersistRunState();
+      resetForNewRun(true);
     }, { capture: true });
   }
 
-  return {};
+  window.__sudokuDebug = {
+    ...(window.__sudokuDebug || {}),
+    emitTranscriptSpamForTest: (count) => {
+      const total = Math.max(0, Number.isFinite(count) ? Math.floor(count) : 0);
+      for (let i = 0; i < total; i += 1) {
+        recordEvent("test_spam", { index: i });
+      }
+      return runState.transcript.length;
+    },
+  };
+
+  return { recordEvent };
 }
 
-function bindHintOverlayToggle() {
+function bindHintOverlayToggle(runTracking) {
   if (!DEFAULT_PROFILE?.featureConfig?.candidateHints) {
     return;
   }
@@ -116,6 +184,7 @@ function bindHintOverlayToggle() {
     savePrefs({ hintOverlayEnabled });
     overlayButton.setAttribute("aria-pressed", String(hintOverlayEnabled));
     overlayButton.classList.toggle("active", hintOverlayEnabled);
+    runTracking?.recordEvent?.("overlay_toggled", { enabled: hintOverlayEnabled });
     window.renderGrid?.();
   });
 
@@ -593,6 +662,6 @@ bindLongPressMultiSelect();
 ensureDebugState();
 bindPuzzleProvider();
 const runTracking = bindRunTracking();
-bindHintOverlayToggle();
+bindHintOverlayToggle(runTracking);
 registerServiceWorker();
 window.__sudokuProfile = DEFAULT_PROFILE;

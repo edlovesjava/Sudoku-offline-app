@@ -1,3 +1,5 @@
+import { createTranscript } from "./transcript.js";
+
 const RUN_KEY = "sudoku_run";
 const SAVE_KEY = "sudoku_save";
 const PREFS_KEY = "sudoku_prefs";
@@ -18,6 +20,7 @@ function normalizeRunState(raw) {
   return {
     schemaVersion: 2,
     assisted: Boolean(raw?.assisted),
+    transcript: createTranscript(raw?.transcript),
   };
 }
 
@@ -58,7 +61,7 @@ export function saveRunState(state) {
 }
 
 export function resetRunState() {
-  const normalized = saveRunState({ assisted: false });
+  const normalized = saveRunState({ assisted: false, transcript: [] });
   syncRunStateToSave(normalized);
   return normalized;
 }

@@ -135,6 +135,30 @@ def test_run_state_no_longer_tracks_legacy_hint_counters(page, live_server):
     assert "hintsUsed" not in run_state
 
 
+def test_transcript_records_core_events(page, live_server):
+    page.goto(live_server)
+
+    page.locator("#grid .cell:not(.fixed)").first.click()
+    page.get_by_role("button", name="1").click()
+
+    events = page.evaluate(
+        "(JSON.parse(localStorage.getItem('sudoku_run') || '{}').transcript || [])"
+    )
+    event_types = [event["eventType"] for event in events]
+    assert "cell_selected" in event_types
+    assert "value_entered" in event_types
+
+
+def test_transcript_is_bounded(page, live_server):
+    page.goto(live_server)
+
+    page.evaluate("window.__sudokuDebug.emitTranscriptSpamForTest(2500)")
+    count = page.evaluate(
+        "(JSON.parse(localStorage.getItem('sudoku_run') || '{}').transcript || []).length"
+    )
+    assert count <= 1000
+
+
 def test_manifest_and_service_worker_are_registered(page, live_server):
     page.goto(live_server)
 
