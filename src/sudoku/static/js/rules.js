@@ -48,15 +48,39 @@ export function buildCandidateHint({ board, row, col }) {
   const candidates = getCellCandidates(board, row, col);
   const cellId = `R${row + 1}C${col + 1}`;
 
+  const rowValues = board[row]?.map((entry) => entry?.value ?? null) ?? [];
+  const colValues = board.map((entry) => entry?.[col]?.value ?? null);
+
+  const boxRowStart = Math.floor(row / 3) * 3;
+  const boxColStart = Math.floor(col / 3) * 3;
+  const boxValues = [];
+  for (let r = boxRowStart; r < boxRowStart + 3; r += 1) {
+    for (let c = boxColStart; c < boxColStart + 3; c += 1) {
+      boxValues.push(board[r]?.[c]?.value ?? null);
+    }
+  }
+
+  const describeElimination = (label, values) => {
+    const used = [...digitSetFromValues(values)].sort((a, b) => a - b);
+    const eliminated = used.length > 0 ? used.join(", ") : "none";
+    return `${label} eliminates ${eliminated}`;
+  };
+
+  const eliminationText = [
+    describeElimination("row", rowValues),
+    describeElimination("column", colValues),
+    describeElimination("box", boxValues),
+  ].join("; ");
+
   if (candidates.length === 0) {
     return {
       candidates,
-      text: `${cellId}: no legal candidates from current row/column/box constraints.`,
+      text: `${cellId}: no legal candidates because ${eliminationText}.`,
     };
   }
 
   return {
     candidates,
-    text: `${cellId} Candidates: ${candidates.join(", ")}`,
+    text: `${cellId} Candidates: ${candidates.join(", ")} because ${eliminationText}.`,
   };
 }

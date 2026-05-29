@@ -512,6 +512,8 @@ def test_hint_marks_run_assisted_and_returns_candidates(page, live_server):
 
     hint_text = page.locator("#hintText").inner_text().strip()
     assert "Candidates" in hint_text
+    assert "because" in hint_text.lower()
+    assert any(unit in hint_text.lower() for unit in ("row", "column", "box"))
 
     run_state = page.evaluate(
         """
