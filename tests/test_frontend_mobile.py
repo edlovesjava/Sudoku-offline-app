@@ -491,3 +491,34 @@ def test_new_game_clears_long_press_multi_select_state(page, live_server):
         """
     )
     assert post_new_game_values == ["6", ""]
+
+
+def test_hint_marks_run_assisted_and_returns_candidates(page, live_server):
+    page.goto(live_server)
+    page.wait_for_selector("#grid .cell")
+
+    editable_index = page.evaluate(
+        """
+        () => {
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          return cells.findIndex((cell) => !cell.classList.contains('fixed') && cell.textContent.trim() === '');
+        }
+        """
+    )
+    assert editable_index >= 0
+
+    page.locator("#grid .cell").nth(editable_index).click()
+    page.get_by_role("button", name="Hint").click()
+
+    hint_text = page.locator("#hintText").inner_text().strip()
+    assert "Candidates" in hint_text
+
+    run_state = page.evaluate(
+        """
+        () => JSON.parse(localStorage.getItem('sudoku_run') || 'null')
+        """
+    )
+
+    assert run_state is not None
+    assert run_state["assisted"] is True
+    assert run_state["hintsUsed"] >= 1

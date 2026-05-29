@@ -2,6 +2,14 @@ import { DEFAULT_PROFILE } from "./config.js";
 import { loadPuzzle } from "./providers.js";
 import { generateBrowserPuzzle } from "./generator.js";
 import { createLongPressHelper } from "./input.js";
+import { buildCandidateHint } from "./rules.js";
+import {
+  loadRunState,
+  loadRunStateFromSave,
+  resetRunState,
+  saveRunState,
+  syncRunStateToSave,
+} from "./storage.js";
 
 function ensureDebugState() {
   window.__sudokuDebug = {
@@ -26,6 +34,140 @@ function bindPuzzleProvider() {
       solution_key: pkg.solution,
     };
   };
+}
+
+function bindRunTracking() {
+  let runState = loadRunStateFromSave() || loadRunState() || resetRunState();
+  runState = saveRunState(runState);
+  syncRunStateToSave(runState);
+
+  const persistRunState = () => {
+    runState = saveRunState(runState);
+    syncRunStateToSave(runState);
+  };
+
+  const originalSaveGame = window.saveGame;
+  if (typeof originalSaveGame === "function") {
+    window.saveGame = function wrappedSaveGame(...args) {
+      const result = originalSaveGame.apply(this, args);
+      persistRunState();
+      return result;
+    };
+  }
+
+  const originalLoadSavedGame = window.loadSavedGame;
+  if (typeof originalLoadSavedGame === "function") {
+    window.loadSavedGame = function wrappedLoadSavedGame(...args) {
+      const loaded = originalLoadSavedGame.apply(this, args);
+      if (loaded) {
+        runState = loadRunStateFromSave() || loadRunState() || runState;
+        persistRunState();
+      }
+      return loaded;
+    };
+  }
+
+  const originalNewGame = window.newGame;
+  if (typeof originalNewGame === "function") {
+    window.newGame = async function wrappedNewGame(...args) {
+      runState = resetRunState();
+      return originalNewGame.apply(this, args);
+    };
+  }
+
+  const markHintUsed = () => {
+    runState = {
+      ...runState,
+      assisted: true,
+      hintsUsed: (runState?.hintsUsed || 0) + 1,
+    };
+    persistRunState();
+  };
+
+  return {
+    markHintUsed,
+  };
+}
+
+function bindCandidateHints(runTracking) {
+  if (!DEFAULT_PROFILE?.featureConfig?.candidateHints) {
+    return;
+  }
+
+  const controls = document.querySelector(".controls");
+  const grid = document.getElementById("grid");
+  if (!controls || !grid || document.getElementById("hintBtn")) {
+    return;
+  }
+
+  const hintButton = document.createElement("button");
+  hintButton.id = "hintBtn";
+  hintButton.type = "button";
+  hintButton.textContent = "Hint";
+  controls.appendChild(hintButton);
+
+  const hintText = document.createElement("div");
+  hintText.id = "hintText";
+  hintText.setAttribute("aria-live", "polite");
+  hintText.style.margin = "8px 0 0";
+  hintText.style.fontSize = "0.85rem";
+  hintText.style.color = "#93c5fd";
+  hintText.style.textAlign = "center";
+  controls.insertAdjacentElement("afterend", hintText);
+
+  const parseValue = (raw) => (/^[1-9]$/.test(raw) ? Number(raw) : null);
+
+  const readBoardFromGrid = () => {
+    const cells = Array.from(grid.children);
+    const board = [];
+    for (let row = 0; row < 9; row += 1) {
+      const rowCells = [];
+      for (let col = 0; col < 9; col += 1) {
+        const idx = (row * 9) + col;
+        const cell = cells[idx];
+        const value = parseValue(cell?.textContent?.trim() || "");
+        rowCells.push({
+          value,
+          fixed: Boolean(cell?.classList.contains("fixed")),
+        });
+      }
+      board.push(rowCells);
+    }
+    return board;
+  };
+
+  const getSelectedPosition = () => {
+    const selectedCell = grid.querySelector(".cell.selected");
+    if (!selectedCell) {
+      return null;
+    }
+
+    const idx = Array.prototype.indexOf.call(grid.children, selectedCell);
+    if (idx < 0) {
+      return null;
+    }
+
+    return { row: Math.floor(idx / 9), col: idx % 9 };
+  };
+
+  hintButton.addEventListener("click", () => {
+    const pos = getSelectedPosition();
+    if (!pos) {
+      hintText.textContent = "Select an editable empty cell to get candidates.";
+      return;
+    }
+
+    const board = readBoardFromGrid();
+    const cell = board[pos.row][pos.col];
+    if (!cell || cell.fixed || Number.isInteger(cell.value)) {
+      hintText.textContent = "Select an editable empty cell to get candidates.";
+      return;
+    }
+
+    const hint = buildCandidateHint({ board, row: pos.row, col: pos.col });
+    hintText.textContent = hint.text;
+    runTracking?.markHintUsed?.();
+  });
 }
 
 function bindNotesToggle() {
@@ -344,4 +486,6 @@ bindNotesToggle();
 bindLongPressMultiSelect();
 ensureDebugState();
 bindPuzzleProvider();
+const runTracking = bindRunTracking();
+bindCandidateHints(runTracking);
 window.__sudokuProfile = DEFAULT_PROFILE;
