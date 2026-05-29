@@ -522,3 +522,34 @@ def test_hint_marks_run_assisted_and_returns_candidates(page, live_server):
     assert run_state is not None
     assert run_state["assisted"] is True
     assert run_state["hintsUsed"] >= 1
+
+
+def test_new_game_resets_assisted_run_state_after_hint(page, live_server):
+    page.goto(live_server)
+    page.wait_for_selector("#grid .cell")
+
+    editable_index = page.evaluate(
+        """
+        () => {
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          return cells.findIndex((cell) => !cell.classList.contains('fixed') && cell.textContent.trim() === '');
+        }
+        """
+    )
+    assert editable_index >= 0
+
+    page.locator("#grid .cell").nth(editable_index).click()
+    page.get_by_role("button", name="Hint").click()
+
+    page.click("#newGame")
+    page.wait_for_function("!document.getElementById('newGame').disabled")
+
+    run_state = page.evaluate(
+        """
+        () => JSON.parse(localStorage.getItem('sudoku_run') || 'null')
+        """
+    )
+
+    assert run_state is not None
+    assert run_state["assisted"] is False
+    assert run_state["hintsUsed"] == 0

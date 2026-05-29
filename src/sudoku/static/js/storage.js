@@ -41,7 +41,9 @@ export function saveRunState(state) {
 }
 
 export function resetRunState() {
-  return saveRunState({ assisted: false, hintsUsed: 0 });
+  const normalized = saveRunState({ assisted: false, hintsUsed: 0 });
+  syncRunStateToSave(normalized);
+  return normalized;
 }
 
 export function loadRunStateFromSave() {

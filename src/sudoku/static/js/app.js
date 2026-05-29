@@ -41,6 +41,10 @@ function bindRunTracking() {
   runState = saveRunState(runState);
   syncRunStateToSave(runState);
 
+  const resetAndPersistRunState = () => {
+    runState = resetRunState();
+  };
+
   const persistRunState = () => {
     runState = saveRunState(runState);
     syncRunStateToSave(runState);
@@ -70,9 +74,16 @@ function bindRunTracking() {
   const originalNewGame = window.newGame;
   if (typeof originalNewGame === "function") {
     window.newGame = async function wrappedNewGame(...args) {
-      runState = resetRunState();
+      resetAndPersistRunState();
       return originalNewGame.apply(this, args);
     };
+  }
+
+  const newGameButton = document.getElementById("newGame");
+  if (newGameButton) {
+    newGameButton.addEventListener("click", () => {
+      resetAndPersistRunState();
+    }, { capture: true });
   }
 
   const markHintUsed = () => {
