@@ -80,3 +80,17 @@ def test_offline_uses_local_provider_before_backend(page, live_server):
     source = page.evaluate("window.__sudokuDebug?.lastPuzzleSource ?? null")
 
     assert source in {"browser", "pack"}
+
+
+def test_backend_reachable_when_local_providers_unavailable(page, live_server):
+    page.route(
+        "**/static/packs/default-pack.json",
+        lambda route: route.fulfill(status=503, content_type="application/json", body="[]"),
+    )
+
+    page.goto(live_server)
+    page.click("#newGame")
+    page.wait_for_function("window.__sudokuDebug?.lastPuzzleSource !== null")
+    source = page.evaluate("window.__sudokuDebug?.lastPuzzleSource ?? null")
+
+    assert source == "backend"

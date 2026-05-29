@@ -1,28 +1,13 @@
 import { assertPuzzlePackage } from "./schemas.js";
 
-function createFallbackBrowserPuzzle(rank) {
-  const solved = "123456789456789123789123456214365897365897214897214365531642978642978531978531642";
-  const blanks = rank >= 300 ? 52 : rank >= 150 ? 45 : 38;
-  const chars = solved.split("");
-  const indices = Array.from({ length: 81 }, (_, i) => i);
-  indices.sort(() => Math.random() - 0.5);
-  for (let i = 0; i < blanks; i += 1) {
-    chars[indices[i]] = "0";
-  }
-
-  return {
-    schemaVersion: 1,
-    puzzleId: `browser-${Date.now()}`,
-    grid: chars.join(""),
-    solution: solved,
-    difficulty: rank,
-    source: "browser",
-  };
-}
-
 async function tryBrowser(rank) {
   try {
-    return createFallbackBrowserPuzzle(rank);
+    const browserGenerator = globalThis.__sudokuBrowserGenerator;
+    if (typeof browserGenerator !== "function") {
+      return null;
+    }
+
+    return (await browserGenerator(rank)) ?? null;
   } catch {
     return null;
   }
@@ -74,7 +59,7 @@ async function tryBackend(rank) {
 }
 
 export async function loadPuzzle({ rank }) {
-  const local = (await tryBrowser(rank)) ?? (await tryPack(rank));
+  const local = (await tryPack(rank)) ?? (await tryBrowser(rank));
   if (local) {
     return { package: assertPuzzlePackage(local), source: local.source };
   }
