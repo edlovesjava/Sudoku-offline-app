@@ -116,6 +116,46 @@ def test_overlay_dims_invalid_digits_but_keeps_them_tappable(page, live_server):
     assert dimmed_count_after_fill == 0
 
 
+def test_can_place_number_enforces_legality_and_rejects_invalid_digit_input(page, live_server):
+    page.goto(live_server)
+
+    result = page.evaluate(
+        """
+        () => {
+          const makeEmptyBoard = () => Array.from({ length: 9 }, () => Array.from({ length: 9 }, () => ({ value: null, fixed: false })));
+
+          const boardState = makeEmptyBoard();
+          boardState[0][4].value = 5; // row conflict for (0,0)
+          boardState[6][0].value = 6; // column conflict for (0,0)
+          boardState[2][2].value = 7; // box conflict for (0,0)
+          boardState[0][0].value = 4; // self-cell should be ignored
+
+          window.eval("board = " + JSON.stringify(boardState));
+
+          return {
+            rowConflict: window.canPlaceNumber(0, 0, 5),
+            columnConflict: window.canPlaceNumber(0, 0, 6),
+            boxConflict: window.canPlaceNumber(0, 0, 7),
+            selfCellIgnored: window.canPlaceNumber(0, 0, 4),
+            validPlacement: window.canPlaceNumber(0, 0, 8),
+            rejectsStringDigit: window.canPlaceNumber(0, 0, "8"),
+            rejectsOutOfRange: window.canPlaceNumber(0, 0, 0),
+            rejectsNonInteger: window.canPlaceNumber(0, 0, 1.5),
+          };
+        }
+        """
+    )
+
+    assert result["rowConflict"] is False
+    assert result["columnConflict"] is False
+    assert result["boxConflict"] is False
+    assert result["selfCellIgnored"] is True
+    assert result["validPlacement"] is True
+    assert result["rejectsStringDigit"] is False
+    assert result["rejectsOutOfRange"] is False
+    assert result["rejectsNonInteger"] is False
+
+
 def test_overlay_preference_persists_across_reload(page, live_server):
     page.goto(live_server)
 

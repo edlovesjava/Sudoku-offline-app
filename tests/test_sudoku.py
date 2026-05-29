@@ -51,13 +51,3 @@ async def test_invalid_rank_rejected(client: AsyncClient) -> None:
     async with client:
         resp = await client.get("/puzzle?rank=10")
     assert resp.status_code == 422
-
-
-@pytest.mark.asyncio
-async def test_index_exposes_number_availability_flag_and_helper(client: AsyncClient) -> None:
-    async with client:
-        resp = await client.get("/")
-
-    html = resp.text
-    assert 'const ENABLE_NUMBER_AVAILABILITY_HINT = true;' in html
-    assert 'function canPlaceNumber(row, col, n)' in html

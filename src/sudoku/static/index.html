@@ -272,6 +272,8 @@ function initBoard(puzzleStr, solutionStr) {
 }
 
 function canPlaceNumber(row, col, n) {
+  if (!Number.isInteger(n) || n < 1 || n > 9) return false;
+
   for (let c = 0; c < 9; c++) {
     if (c !== col && board[row][c].value === n) return false;
   }
