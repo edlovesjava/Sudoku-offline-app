@@ -1,5 +1,6 @@
 const RUN_KEY = "sudoku_run";
 const SAVE_KEY = "sudoku_save";
+const PREFS_KEY = "sudoku_prefs";
 
 function parseJson(raw) {
   if (!raw) {
@@ -14,15 +15,31 @@ function parseJson(raw) {
 }
 
 function normalizeRunState(raw) {
-  const hintsUsed = Number.isFinite(Number(raw?.hintsUsed))
-    ? Math.max(0, Math.floor(Number(raw.hintsUsed)))
-    : 0;
-
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     assisted: Boolean(raw?.assisted),
-    hintsUsed,
   };
+}
+
+function normalizePrefs(raw) {
+  return {
+    hintOverlayEnabled: Boolean(raw?.hintOverlayEnabled),
+  };
+}
+
+export function loadPrefs() {
+  const parsed = parseJson(localStorage.getItem(PREFS_KEY));
+  if (!parsed || typeof parsed !== "object") {
+    return normalizePrefs({});
+  }
+
+  return normalizePrefs(parsed);
+}
+
+export function savePrefs(prefs) {
+  const normalized = normalizePrefs(prefs || {});
+  localStorage.setItem(PREFS_KEY, JSON.stringify(normalized));
+  return normalized;
 }
 
 export function loadRunState() {
@@ -41,7 +58,7 @@ export function saveRunState(state) {
 }
 
 export function resetRunState() {
-  const normalized = saveRunState({ assisted: false, hintsUsed: 0 });
+  const normalized = saveRunState({ assisted: false });
   syncRunStateToSave(normalized);
   return normalized;
 }
@@ -69,13 +86,13 @@ export function syncRunStateToSave(state) {
     return;
   }
 
+  const { hintsUsed: _legacyHintsUsed, ...saveWithoutLegacyHintCounter } = save;
   const normalized = normalizeRunState(state || {});
   localStorage.setItem(
     SAVE_KEY,
     JSON.stringify({
-      ...save,
+      ...saveWithoutLegacyHintCounter,
       assisted: normalized.assisted,
-      hintsUsed: normalized.hintsUsed,
       run: normalized,
     }),
   );

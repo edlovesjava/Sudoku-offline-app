@@ -116,6 +116,25 @@ def test_overlay_dims_invalid_digits_but_keeps_them_tappable(page, live_server):
     assert dimmed_count_after_fill == 0
 
 
+def test_overlay_preference_persists_across_reload(page, live_server):
+    page.goto(live_server)
+
+    toggle = page.get_by_role("button", name="Hint Overlay")
+    toggle.click()
+    assert toggle.get_attribute("aria-pressed") == "true"
+
+    page.reload()
+    toggle = page.get_by_role("button", name="Hint Overlay")
+    assert toggle.get_attribute("aria-pressed") == "true"
+
+
+def test_run_state_no_longer_tracks_legacy_hint_counters(page, live_server):
+    page.goto(live_server)
+
+    run_state = page.evaluate("JSON.parse(localStorage.getItem('sudoku_run') || '{}')")
+    assert "hintsUsed" not in run_state
+
+
 def test_manifest_and_service_worker_are_registered(page, live_server):
     page.goto(live_server)
 

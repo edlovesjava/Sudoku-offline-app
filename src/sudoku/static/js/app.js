@@ -3,9 +3,11 @@ import { loadPuzzle } from "./providers.js";
 import { generateBrowserPuzzle } from "./generator.js";
 import { createLongPressHelper } from "./input.js";
 import {
+  loadPrefs,
   loadRunState,
   loadRunStateFromSave,
   resetRunState,
+  savePrefs,
   saveRunState,
   syncRunStateToSave,
 } from "./storage.js";
@@ -99,17 +101,19 @@ function bindHintOverlayToggle() {
     return;
   }
 
-  let hintOverlayEnabled = false;
+  let hintOverlayEnabled = loadPrefs().hintOverlayEnabled;
   const SAVE_KEY = "sudoku_save";
   const overlayButton = document.createElement("button");
   overlayButton.id = "hintOverlayBtn";
   overlayButton.type = "button";
   overlayButton.textContent = "Hint Overlay";
-  overlayButton.setAttribute("aria-pressed", "false");
+  overlayButton.setAttribute("aria-pressed", String(hintOverlayEnabled));
+  overlayButton.classList.toggle("active", hintOverlayEnabled);
   controls.appendChild(overlayButton);
 
   overlayButton.addEventListener("click", () => {
     hintOverlayEnabled = !hintOverlayEnabled;
+    savePrefs({ hintOverlayEnabled });
     overlayButton.setAttribute("aria-pressed", String(hintOverlayEnabled));
     overlayButton.classList.toggle("active", hintOverlayEnabled);
     window.renderGrid?.();
