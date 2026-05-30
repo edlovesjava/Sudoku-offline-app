@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a1a2e">
+<link rel="manifest" href="/static/manifest.webmanifest">
 <title>Sudoku</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -212,11 +214,11 @@ function getCache() {
 function setCache(c) { localStorage.setItem(CACHE_KEY, JSON.stringify(c)); }
 function updateCacheUI() { document.getElementById("cacheCount").textContent = getCache().length; }
 
-async function fetchPuzzle(rank) {
+window.fetchPuzzle = async function fetchPuzzle(rank) {
   const res = await fetch(`/puzzle?rank=${rank}`);
   if (!res.ok) throw new Error("fetch failed");
   return res.json();
-}
+};
 
 async function fillCache() {
   const cache = getCache();
@@ -225,7 +227,7 @@ async function fillCache() {
   const ranks = [100, 150, 150, 300, 450];
   for (let i = 0; i < need; i++) {
     try {
-      const puzzle = await fetchPuzzle(ranks[i % ranks.length]);
+      const puzzle = await window.fetchPuzzle(ranks[i % ranks.length]);
       cache.push(puzzle);
     } catch { break; }
   }
@@ -431,10 +433,12 @@ async function newGame() {
   btn.textContent = "Loading...";
 
   let puzzle = null;
+  let usedCacheFallback = false;
   try {
-    puzzle = await fetchPuzzle(rank);
+    puzzle = await window.fetchPuzzle(rank);
   } catch {
     puzzle = pullFromCache(rank);
+    usedCacheFallback = Boolean(puzzle);
   }
 
   if (!puzzle) {
@@ -447,6 +451,10 @@ async function newGame() {
   initBoard(puzzle.initial_grid, puzzle.solution_key);
   startTimer();
   gameActive = true;
+  if (usedCacheFallback) {
+    window.__sudokuDebug = window.__sudokuDebug || {};
+    window.__sudokuDebug.lastPuzzleSource = "cache";
+  }
   btn.textContent = "New Game";
   btn.disabled = false;
 
@@ -526,5 +534,6 @@ updateOnline();
 updateCacheUI();
 if (!loadSavedGame()) newGame();
 </script>
+<script type="module" src="/static/js/app.js"></script>
 </body>
 </html>

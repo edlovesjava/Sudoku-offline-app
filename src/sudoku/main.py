@@ -27,6 +27,12 @@ async def index() -> FileResponse:
     return FileResponse(STATIC_DIR / "index.html")
 
 
+@app.get("/sw.js")
+async def service_worker() -> FileResponse:
+    """Serve service worker from app root scope."""
+    return FileResponse(STATIC_DIR / "sw.js")
+
+
 @app.get("/puzzle")
 async def get_puzzle(rank: int = Query(default=150, ge=50, le=500)) -> dict[str, str | int]:
     """Generate a new Sudoku puzzle with solution.
