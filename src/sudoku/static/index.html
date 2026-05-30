@@ -85,7 +85,10 @@
   .cell.error { color: #ef4444; background: #2d1520; }
   .cell.correct-flash { animation: flash-green 0.4s; }
   .cell.highlight { background: #1a2d50; }
-  .cell.same-number { background: #2a1a4e; color: #c4b5fd; }
+  .cell.same-number,
+  .cell.unavailable-number { background: #2a1a4e; color: #c4b5fd; }
+  .cell.error.same-number,
+  .cell.error.unavailable-number { color: #ef4444; background: #2d1520; }
 
   /* Notes */
   .note {
@@ -196,6 +199,10 @@
 const CACHE_KEY = "sudoku_cache";
 const SAVE_KEY = "sudoku_save";
 const CACHE_SIZE = 5;
+const ENABLE_NUMBER_AVAILABILITY_HINT =
+  typeof window.__SUDOKU_ENABLE_NUMBER_AVAILABILITY_HINT === "boolean"
+    ? window.__SUDOKU_ENABLE_NUMBER_AVAILABILITY_HINT
+    : true;
 
 let board = [];       // {value, fixed, solution, error}
 let selected = null;  // {row, col}
@@ -270,6 +277,28 @@ function initBoard(puzzleStr, solutionStr) {
   renderGrid();
 }
 
+function canPlaceNumber(row, col, n) {
+  if (!Number.isInteger(n) || n < 1 || n > 9) return false;
+
+  for (let c = 0; c < 9; c++) {
+    if (c !== col && board[row][c].value === n) return false;
+  }
+
+  for (let r = 0; r < 9; r++) {
+    if (r !== row && board[r][col].value === n) return false;
+  }
+
+  const boxStartRow = Math.floor(row / 3) * 3;
+  const boxStartCol = Math.floor(col / 3) * 3;
+  for (let r = boxStartRow; r < boxStartRow + 3; r++) {
+    for (let c = boxStartCol; c < boxStartCol + 3; c++) {
+      if ((r !== row || c !== col) && board[r][c].value === n) return false;
+    }
+  }
+
+  return true;
+}
+
 function saveGame() {
   if (!gameActive) return;
   const data = { board, timerElapsed: Math.floor((Date.now() - timerStart) / 1000) };
@@ -316,6 +345,10 @@ function renderGrid() {
         }
       }
       if (highlightNum && b.value === highlightNum) cell.classList.add("same-number");
+      if (ENABLE_NUMBER_AVAILABILITY_HINT && highlightNum && !b.fixed && !b.value &&
+          !canPlaceNumber(r, c, highlightNum)) {
+        cell.classList.add("unavailable-number");
+      }
       if (b.value) {
         cell.textContent = b.value;
       } else if (b.notes && b.notes.length > 0) {

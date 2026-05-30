@@ -34,3 +34,7 @@ Then open `http://127.0.0.1:8000`.
 
 - Capacitor setup guide: `docs/capacitor-setup.md`
 - Mobile emulator/simulator checklist: `docs/mobile-testing.md`
+
+## Manual testing docs
+
+- Number availability highlight checklist: `docs/manual-testing-number-availability.md`

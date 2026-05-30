@@ -116,6 +116,154 @@ def test_overlay_dims_invalid_digits_but_keeps_them_tappable(page, live_server):
     assert dimmed_count_after_fill == 0
 
 
+def test_can_place_number_enforces_legality_and_rejects_invalid_digit_input(page, live_server):
+    page.goto(live_server)
+
+    result = page.evaluate(
+        """
+        () => {
+          const makeEmptyBoard = () => Array.from({ length: 9 }, () => Array.from({ length: 9 }, () => ({ value: null, fixed: false })));
+
+          const boardState = makeEmptyBoard();
+          boardState[0][4].value = 5; // row conflict for (0,0)
+          boardState[6][0].value = 6; // column conflict for (0,0)
+          boardState[2][2].value = 7; // box conflict for (0,0)
+          boardState[0][0].value = 4; // self-cell should be ignored
+
+          window.eval("board = " + JSON.stringify(boardState));
+
+          return {
+            rowConflict: window.canPlaceNumber(0, 0, 5),
+            columnConflict: window.canPlaceNumber(0, 0, 6),
+            boxConflict: window.canPlaceNumber(0, 0, 7),
+            selfCellIgnored: window.canPlaceNumber(0, 0, 4),
+            validPlacement: window.canPlaceNumber(0, 0, 8),
+            rejectsStringDigit: window.canPlaceNumber(0, 0, "8"),
+            rejectsOutOfRange: window.canPlaceNumber(0, 0, 0),
+            rejectsNonInteger: window.canPlaceNumber(0, 0, 1.5),
+          };
+        }
+        """
+    )
+
+    assert result["rowConflict"] is False
+    assert result["columnConflict"] is False
+    assert result["boxConflict"] is False
+    assert result["selfCellIgnored"] is True
+    assert result["validPlacement"] is True
+    assert result["rejectsStringDigit"] is False
+    assert result["rejectsOutOfRange"] is False
+    assert result["rejectsNonInteger"] is False
+
+
+def test_highlighting_fixed_number_shades_only_illegal_blank_cells(page, live_server):
+    page.goto(live_server)
+    page.evaluate(
+        """
+        () => {
+          window.fetchPuzzle = async () => ({
+            difficulty: 150,
+            initial_grid: "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
+            solution_key: "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
+          });
+        }
+        """
+    )
+    page.click("#newGame")
+
+    page.locator("#grid .cell").nth(0).click()
+
+    shaded = page.evaluate(
+        """
+        () => {
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          return {
+            illegalBlankShaded: cells[2].classList.contains('unavailable-number'),
+            legalBlankShaded: cells[40].classList.contains('unavailable-number'),
+          };
+        }
+        """
+    )
+
+    assert shaded["illegalBlankShaded"] is True
+    assert shaded["legalBlankShaded"] is False
+
+
+def test_same_number_highlight_works_without_unavailable_shading_when_disabled(page, live_server):
+    page.add_init_script("window.__SUDOKU_ENABLE_NUMBER_AVAILABILITY_HINT = false;")
+    page.goto(live_server)
+    page.evaluate(
+        """
+        () => {
+          window.fetchPuzzle = async () => ({
+            difficulty: 150,
+            initial_grid: "530070000600195000098000060800060003400803001700020006060000280000419005000080079",
+            solution_key: "534678912672195348198342567859761423426853791713924856961537284287419635345286179",
+          });
+        }
+        """
+    )
+    page.click("#newGame")
+
+    page.locator("#grid .cell").nth(0).click()
+
+    highlight_counts = page.evaluate(
+        """
+        () => ({
+          sameNumber: document.querySelectorAll('#grid .cell.same-number').length,
+          unavailable: document.querySelectorAll('#grid .cell.unavailable-number').length,
+        })
+        """
+    )
+
+    assert highlight_counts["sameNumber"] > 0
+    assert highlight_counts["unavailable"] == 0
+
+
+def test_error_style_precedence_wins_over_number_highlights(page, live_server):
+    page.goto(live_server)
+
+    styles = page.evaluate(
+        """
+        () => {
+          const host = document.getElementById('grid') || document.body;
+          const probe = document.createElement('div');
+          probe.className = 'cell error';
+          host.appendChild(probe);
+
+          const snapshot = () => {
+            const computed = getComputedStyle(probe);
+            return {
+              color: computed.color,
+              backgroundColor: computed.backgroundColor,
+            };
+          };
+
+          const errorOnly = snapshot();
+          probe.classList.add('same-number');
+          const errorPlusSameNumber = snapshot();
+          probe.classList.remove('same-number');
+          probe.classList.add('unavailable-number');
+          const errorPlusUnavailable = snapshot();
+          probe.classList.add('same-number');
+          const errorPlusBoth = snapshot();
+
+          probe.remove();
+          return {
+            errorOnly,
+            errorPlusSameNumber,
+            errorPlusUnavailable,
+            errorPlusBoth,
+          };
+        }
+        """
+    )
+
+    assert styles["errorPlusSameNumber"] == styles["errorOnly"]
+    assert styles["errorPlusUnavailable"] == styles["errorOnly"]
+    assert styles["errorPlusBoth"] == styles["errorOnly"]
+
+
 def test_overlay_preference_persists_across_reload(page, live_server):
     page.goto(live_server)
 
