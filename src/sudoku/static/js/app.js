@@ -333,7 +333,9 @@ function bindRunTracking() {
       return false;
     }
     const boardEvents = getBoardEvents(runState.transcript);
-    return getBoardEventIndexById(boardEvents, runState.savepointBoardEventId) >= 0;
+    const currentIndex = getCurrentBoardEventIndex(boardEvents);
+    const savepointIndex = getBoardEventIndexById(boardEvents, runState.savepointBoardEventId);
+    return savepointIndex >= 0 && currentIndex >= 0 && savepointIndex < currentIndex;
   };
 
   const updateUndoRedoButtons = () => {
@@ -532,10 +534,17 @@ function bindRunTracking() {
       return false;
     }
 
+    const boardEvents = getBoardEvents(runState.transcript);
+    const currentIndex = getCurrentBoardEventIndex(boardEvents);
+    const savepointIndex = getBoardEventIndexById(boardEvents, runState.savepointBoardEventId);
+    if (savepointIndex < 0 || currentIndex < 0 || savepointIndex >= currentIndex) {
+      return false;
+    }
+
     const previousCursor = runState.currentBoardEventId;
     runState = {
       ...runState,
-      currentBoardEventId: runState.savepointBoardEventId,
+      currentBoardEventId: getBoardEventId(boardEvents[savepointIndex]),
     };
 
     if (replayBoardToCursor()) {

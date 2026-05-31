@@ -367,6 +367,52 @@ def test_savepoint_set_undo_to_savepoint_and_clear(page, live_server):
     assert savepoint_after_clear is None
 
 
+def test_undo_to_savepoint_is_backward_only_and_cannot_move_forward(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    editable.click()
+    page.get_by_role("button", name="1").click()
+    page.get_by_role("button", name="2").click()
+    page.get_by_role("button", name="Savepoint", exact=True).click()
+    page.get_by_role("button", name="3").click()
+    assert editable.text_content().strip() == "3"
+
+    page.get_by_role("button", name="Undo", exact=True).click()
+    assert editable.text_content().strip() == "2"
+
+    undo_to_savepoint = page.get_by_role("button", name="Undo to Savepoint")
+    assert undo_to_savepoint.is_disabled()
+
+    page.get_by_role("button", name="Undo", exact=True).click()
+    assert editable.text_content().strip() == "1"
+    assert undo_to_savepoint.is_disabled()
+
+    cursor_before_forced_click = page.evaluate(
+        "JSON.parse(localStorage.getItem('sudoku_run') || '{}').currentBoardEventId"
+    )
+    assert cursor_before_forced_click == "board-1"
+
+    page.evaluate(
+        """
+        () => {
+          const button = document.getElementById('undoToSavepointBtn');
+          if (!button) {
+            return;
+          }
+          button.disabled = false;
+          button.click();
+        }
+        """
+    )
+
+    cursor_after_forced_click = page.evaluate(
+        "JSON.parse(localStorage.getItem('sudoku_run') || '{}').currentBoardEventId"
+    )
+    assert cursor_after_forced_click == "board-1"
+    assert editable.text_content().strip() == "1"
+
+
 def test_undo_replay_uses_stable_base_after_reload(page, live_server):
     page.goto(live_server)
 
