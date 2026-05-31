@@ -101,10 +101,18 @@ function bindRunTracking() {
 
   const recordEvent = (eventType, payload = {}) => {
     ensureRunIdentity();
+    const isBoardEvent = ["value_entered", "note_toggled", "erase_applied", "bulk_applied"]
+      .includes(eventType);
+    const nextBoardRevision = isBoardEvent
+      ? (runState.boardRevision || 0) + 1
+      : (runState.boardRevision || 0);
+
     const nextEvent = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       runId: runState.runId,
       puzzleId: runState.puzzleId,
+      eventClass: isBoardEvent ? "board" : "ui",
+      boardRevision: nextBoardRevision,
       eventTime: new Date().toISOString(),
       elapsedMs: getElapsedMs(),
       eventType,
@@ -116,6 +124,7 @@ function bindRunTracking() {
       ...runState,
       transcript,
       transcriptTruncated: Boolean(runState.transcriptTruncated || truncated),
+      boardRevision: nextBoardRevision,
     };
     persistRunState();
   };

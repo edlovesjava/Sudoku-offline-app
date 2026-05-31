@@ -311,6 +311,20 @@ def test_transcript_records_core_events(page, live_server):
     assert "value_entered" in event_types
 
 
+def test_transcript_board_events_include_class_and_revision(page, live_server):
+    page.goto(live_server)
+
+    page.locator("#grid .cell:not(.fixed)").first.click()
+    page.get_by_role("button", name="1").click()
+
+    events = page.evaluate(
+        "(JSON.parse(localStorage.getItem('sudoku_run') || '{}').transcript || [])"
+    )
+    board_events = [event for event in events if event.get("eventClass") == "board"]
+    assert board_events
+    assert all("boardRevision" in event for event in board_events)
+
+
 def test_transcript_is_bounded(page, live_server):
     page.goto(live_server)
 

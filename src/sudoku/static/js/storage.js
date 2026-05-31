@@ -31,6 +31,11 @@ function normalizeRunState(raw) {
     assisted: Boolean(raw?.assisted),
     transcript: createTranscript(raw?.transcript),
     transcriptTruncated: Boolean(raw?.transcriptTruncated),
+    boardRevision: Number.isFinite(raw?.boardRevision)
+      ? Math.max(0, Math.floor(raw.boardRevision))
+      : 0,
+    currentBoardEventId: raw?.currentBoardEventId ?? null,
+    savepointBoardEventId: raw?.savepointBoardEventId ?? null,
   };
 }
 
