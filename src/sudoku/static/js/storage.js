@@ -16,6 +16,42 @@ function parseJson(raw) {
   }
 }
 
+function normalizeBoardSnapshot(rawBoard) {
+  if (!Array.isArray(rawBoard) || rawBoard.length !== 9) {
+    return null;
+  }
+
+  const snapshot = [];
+  for (let row = 0; row < 9; row += 1) {
+    const rawRow = rawBoard[row];
+    if (!Array.isArray(rawRow) || rawRow.length !== 9) {
+      return null;
+    }
+
+    const snapshotRow = [];
+    for (let col = 0; col < 9; col += 1) {
+      const source = rawRow[col] || {};
+      snapshotRow.push({
+        value: Number.isInteger(source.value) && source.value >= 1 && source.value <= 9
+          ? source.value
+          : null,
+        fixed: Boolean(source.fixed),
+        solution: Number.isInteger(source.solution) && source.solution >= 1 && source.solution <= 9
+          ? source.solution
+          : null,
+        error: Boolean(source.error),
+        notes: Array.isArray(source.notes)
+          ? source.notes.filter((note) => Number.isInteger(note) && note >= 1 && note <= 9)
+          : [],
+      });
+    }
+
+    snapshot.push(snapshotRow);
+  }
+
+  return snapshot;
+}
+
 function normalizeRunState(raw) {
   const runId = typeof raw?.runId === "string" && raw.runId.trim().length > 0
     ? raw.runId
@@ -31,6 +67,18 @@ function normalizeRunState(raw) {
     assisted: Boolean(raw?.assisted),
     transcript: createTranscript(raw?.transcript),
     transcriptTruncated: Boolean(raw?.transcriptTruncated),
+    boardRevision: Number.isFinite(raw?.boardRevision)
+      ? Math.max(0, Math.floor(raw.boardRevision))
+      : 0,
+    baseBoardSnapshot: normalizeBoardSnapshot(raw?.baseBoardSnapshot),
+    currentBoardEventId:
+      typeof raw?.currentBoardEventId === "string" && raw.currentBoardEventId.length > 0
+        ? raw.currentBoardEventId
+        : null,
+    savepointBoardEventId:
+      typeof raw?.savepointBoardEventId === "string" && raw.savepointBoardEventId.length > 0
+        ? raw.savepointBoardEventId
+        : null,
   };
 }
 

@@ -311,6 +311,348 @@ def test_transcript_records_core_events(page, live_server):
     assert "value_entered" in event_types
 
 
+def test_transcript_board_events_include_class_and_revision(page, live_server):
+    page.goto(live_server)
+
+    page.locator("#grid .cell:not(.fixed)").first.click()
+    page.get_by_role("button", name="1").click()
+
+    events = page.evaluate(
+        "(JSON.parse(localStorage.getItem('sudoku_run') || '{}').transcript || [])"
+    )
+    board_events = [event for event in events if event.get("eventClass") == "board"]
+    assert board_events
+    assert all("boardRevision" in event for event in board_events)
+
+
+def test_undo_redo_replays_board_events_only(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    editable.click()
+    page.get_by_role("button", name="1").click()
+
+    page.get_by_role("button", name="Undo", exact=True).click()
+    assert editable.text_content().strip() in {"", "?"}
+
+    page.get_by_role("button", name="Redo").click()
+    assert editable.text_content().strip() == "1"
+
+
+def test_savepoint_set_undo_to_savepoint_and_clear(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    editable.click()
+    page.get_by_role("button", name="1").click()
+
+    page.get_by_role("button", name="Savepoint", exact=True).click()
+
+    page.get_by_role("button", name="2").click()
+    assert editable.text_content().strip() == "2"
+
+    page.get_by_role("button", name="Undo to Savepoint").click()
+    assert editable.text_content().strip() == "1"
+
+    savepoint_before_clear = page.evaluate(
+        "JSON.parse(localStorage.getItem('sudoku_run') || '{}').savepointBoardEventId"
+    )
+    assert savepoint_before_clear == "board-1"
+
+    page.get_by_role("button", name="Clear Savepoint").click()
+
+    savepoint_after_clear = page.evaluate(
+        "JSON.parse(localStorage.getItem('sudoku_run') || '{}').savepointBoardEventId"
+    )
+    assert savepoint_after_clear is None
+
+
+def test_undo_to_savepoint_is_backward_only_and_cannot_move_forward(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    editable.click()
+    page.get_by_role("button", name="1").click()
+    page.get_by_role("button", name="2").click()
+    page.get_by_role("button", name="Savepoint", exact=True).click()
+    page.get_by_role("button", name="3").click()
+    assert editable.text_content().strip() == "3"
+
+    page.get_by_role("button", name="Undo", exact=True).click()
+    assert editable.text_content().strip() == "2"
+
+    undo_to_savepoint = page.get_by_role("button", name="Undo to Savepoint")
+    assert undo_to_savepoint.is_disabled()
+
+    page.get_by_role("button", name="Undo", exact=True).click()
+    assert editable.text_content().strip() == "1"
+    assert undo_to_savepoint.is_disabled()
+
+    cursor_before_forced_click = page.evaluate(
+        "JSON.parse(localStorage.getItem('sudoku_run') || '{}').currentBoardEventId"
+    )
+    assert cursor_before_forced_click == "board-1"
+
+    page.evaluate(
+        """
+        () => {
+          const button = document.getElementById('undoToSavepointBtn');
+          if (!button) {
+            return;
+          }
+          button.disabled = false;
+          button.click();
+        }
+        """
+    )
+
+    cursor_after_forced_click = page.evaluate(
+        "JSON.parse(localStorage.getItem('sudoku_run') || '{}').currentBoardEventId"
+    )
+    assert cursor_after_forced_click == "board-1"
+    assert editable.text_content().strip() == "1"
+
+
+def test_undo_replay_uses_stable_base_after_reload(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    editable.click()
+    page.get_by_role("button", name="1").click()
+    page.get_by_role("button", name="2").click()
+
+    page.reload()
+    editable = page.locator("#grid .cell:not(.fixed)").first
+
+    page.get_by_role("button", name="Undo", exact=True).click()
+    assert editable.text_content().strip() == "1"
+
+    page.get_by_role("button", name="Undo", exact=True).click()
+    assert editable.text_content().strip() in {"", "?"}
+
+
+def test_new_board_action_after_undo_clears_redo_path(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    redo_button = page.get_by_role("button", name="Redo")
+    editable.click()
+    page.get_by_role("button", name="1").click()
+    page.get_by_role("button", name="2").click()
+
+    page.get_by_role("button", name="Undo", exact=True).click()
+    assert editable.text_content().strip() == "1"
+    assert not redo_button.is_disabled()
+
+    page.get_by_role("button", name="3").click()
+    assert editable.text_content().strip() == "3"
+    assert redo_button.is_disabled()
+
+    board_values = page.evaluate(
+        """
+        () => {
+          const run = JSON.parse(localStorage.getItem('sudoku_run') || '{}');
+          return (run.transcript || [])
+            .filter((event) => event?.eventClass === 'board')
+            .map((event) => event.value);
+        }
+        """
+    )
+    assert board_values == [1, 3]
+
+    page.get_by_role("button", name="Undo", exact=True).click()
+    assert editable.text_content().strip() == "1"
+
+
+def test_undo_redo_and_savepoint_controls_follow_state(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    undo_button = page.get_by_role("button", name="Undo", exact=True)
+    redo_button = page.get_by_role("button", name="Redo")
+    savepoint_button = page.get_by_role("button", name="Savepoint", exact=True)
+    undo_to_savepoint_button = page.get_by_role("button", name="Undo to Savepoint")
+    clear_savepoint_button = page.get_by_role("button", name="Clear Savepoint")
+
+    assert undo_button.is_disabled()
+    assert redo_button.is_disabled()
+    assert undo_to_savepoint_button.is_disabled()
+    assert clear_savepoint_button.is_disabled()
+
+    editable.click()
+    page.get_by_role("button", name="1").click()
+
+    assert not undo_button.is_disabled()
+    assert redo_button.is_disabled()
+    assert undo_to_savepoint_button.is_disabled()
+    assert clear_savepoint_button.is_disabled()
+
+    savepoint_button.click()
+
+    assert undo_to_savepoint_button.is_disabled()
+    assert not clear_savepoint_button.is_disabled()
+
+    page.get_by_role("button", name="2").click()
+
+    assert not undo_button.is_disabled()
+    assert redo_button.is_disabled()
+    assert not undo_to_savepoint_button.is_disabled()
+    assert not clear_savepoint_button.is_disabled()
+
+    undo_button.click()
+
+    assert not undo_button.is_disabled()
+    assert not redo_button.is_disabled()
+    assert undo_to_savepoint_button.is_disabled()
+    assert not clear_savepoint_button.is_disabled()
+
+    page.get_by_role("button", name="3").click()
+
+    assert not undo_button.is_disabled()
+    assert redo_button.is_disabled()
+    assert not undo_to_savepoint_button.is_disabled()
+    assert not clear_savepoint_button.is_disabled()
+
+    clear_savepoint_button.click()
+    assert undo_to_savepoint_button.is_disabled()
+    assert clear_savepoint_button.is_disabled()
+
+
+def test_erase_action_is_undoable(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    editable.click()
+    page.get_by_role("button", name="4", exact=True).click()
+    assert editable.text_content().strip() == "4"
+
+    page.get_by_role("button", name="Erase").click()
+    assert editable.text_content().strip() in {"", "?"}
+
+    page.get_by_role("button", name="Undo", exact=True).click()
+    assert editable.text_content().strip() == "4"
+
+
+def test_undo_does_not_persist_cursor_when_replay_fails(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    editable.click()
+    page.get_by_role("button", name="1").click()
+
+    current_before = page.evaluate(
+        "JSON.parse(localStorage.getItem('sudoku_run') || '{}').currentBoardEventId"
+    )
+    assert current_before == "board-1"
+
+    page.evaluate(
+        """
+        () => {
+          const bridge = window.__sudokuBoardBridge;
+          if (!bridge) {
+            return;
+          }
+          bridge.write = () => {
+            throw new Error('forced replay failure');
+          };
+        }
+        """
+    )
+
+    page.get_by_role("button", name="Undo", exact=True).click()
+
+    current_after = page.evaluate(
+        "JSON.parse(localStorage.getItem('sudoku_run') || '{}').currentBoardEventId"
+    )
+    assert current_after == "board-1"
+    assert editable.text_content().strip() == "1"
+
+
+def test_legacy_run_state_without_base_snapshot_is_migrated(page, live_server):
+    page.goto(live_server)
+
+    page.evaluate(
+        """
+        () => {
+          const legacyRun = {
+            schemaVersion: 2,
+            runId: 'legacy-run',
+            puzzleId: 'legacy-puzzle',
+            assisted: false,
+            transcriptTruncated: false,
+            boardRevision: 1,
+            baseBoardSnapshot: null,
+            currentBoardEventId: 'board-1',
+            savepointBoardEventId: null,
+            transcript: [
+              {
+                schemaVersion: 2,
+                runId: 'legacy-run',
+                puzzleId: 'legacy-puzzle',
+                eventId: 'event-legacy-ui',
+                eventClass: 'ui',
+                boardRevision: 0,
+                eventTime: new Date(0).toISOString(),
+                elapsedMs: 0,
+                eventType: 'run_started',
+                payload: {},
+              },
+              {
+                schemaVersion: 2,
+                runId: 'legacy-run',
+                puzzleId: 'legacy-puzzle',
+                eventId: 'board-1',
+                eventClass: 'board',
+                boardRevision: 1,
+                eventTime: new Date(0).toISOString(),
+                elapsedMs: 1,
+                eventType: 'value_entered',
+                payload: { row: 0, col: 2, value: 1, mode: 'number' },
+                row: 0,
+                col: 2,
+                value: 1,
+                mode: 'number',
+              },
+            ],
+          };
+
+          localStorage.setItem('sudoku_run', JSON.stringify(legacyRun));
+
+          const rawSave = localStorage.getItem('sudoku_save');
+          const parsedSave = rawSave ? JSON.parse(rawSave) : {};
+          localStorage.setItem('sudoku_save', JSON.stringify({
+            ...parsedSave,
+            assisted: false,
+            run: legacyRun,
+          }));
+        }
+        """
+    )
+
+    page.reload()
+
+    migrated = page.evaluate(
+        """
+        () => {
+          const run = JSON.parse(localStorage.getItem('sudoku_run') || '{}');
+          const boardEvents = (run.transcript || []).filter((event) => event?.eventClass === 'board');
+          return {
+            boardEventCount: boardEvents.length,
+            currentBoardEventId: run.currentBoardEventId,
+            boardRevision: run.boardRevision,
+          };
+        }
+        """
+    )
+
+    assert migrated["boardEventCount"] == 0
+    assert migrated["currentBoardEventId"] is None
+    assert migrated["boardRevision"] == 0
+
+    undo_button = page.get_by_role("button", name="Undo", exact=True)
+    assert undo_button.is_disabled()
+
+
 def test_transcript_is_bounded(page, live_server):
     page.goto(live_server)
 
@@ -764,6 +1106,62 @@ def test_long_press_multi_select_and_bulk_number_fill(page, live_server):
         """
     )
     assert notes_applied == [True, True]
+
+
+def test_bulk_erase_action_is_undoable(page, live_server):
+    page.goto(live_server)
+    page.wait_for_selector("#grid .cell")
+
+    editable_indexes = page.evaluate(
+        """
+        () => {
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          return cells
+            .map((cell, idx) => ({ idx, fixed: cell.classList.contains('fixed') }))
+            .filter((entry) => !entry.fixed)
+            .slice(0, 2)
+            .map((entry) => entry.idx);
+        }
+        """
+    )
+    assert len(editable_indexes) == 2
+
+    first = page.locator("#grid .cell").nth(editable_indexes[0])
+    second = page.locator("#grid .cell").nth(editable_indexes[1])
+
+    first_box = first.bounding_box()
+    assert first_box is not None
+    page.mouse.move(first_box["x"] + (first_box["width"] / 2), first_box["y"] + (first_box["height"] / 2))
+    page.mouse.down()
+    page.wait_for_timeout(450)
+    page.mouse.up()
+
+    second.click()
+    page.get_by_role("button", name="7", exact=True).click()
+    page.get_by_role("button", name="Erase").click()
+
+    erased_values = page.evaluate(
+        f"""
+        () => {{
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          return [cells[{editable_indexes[0]}].textContent.trim(), cells[{editable_indexes[1]}].textContent.trim()];
+        }}
+        """
+    )
+    assert erased_values == ["", ""]
+
+    page.get_by_role("button", name="Undo", exact=True).click()
+    page.get_by_role("button", name="Undo", exact=True).click()
+
+    restored_values = page.evaluate(
+        f"""
+        () => {{
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          return [cells[{editable_indexes[0]}].textContent.trim(), cells[{editable_indexes[1]}].textContent.trim()];
+        }}
+        """
+    )
+    assert restored_values == ["7", "7"]
 
 
 def test_new_game_clears_long_press_multi_select_state(page, live_server):
