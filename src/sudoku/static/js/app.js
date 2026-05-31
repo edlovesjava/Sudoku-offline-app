@@ -14,6 +14,65 @@ import {
 import { getInvalidDigitsForCell } from "./rules.js";
 import { appendTranscriptEvent, getBoardEvents } from "./transcript.js";
 
+function getRuntimeBoardBridge() {
+  const existing = window.__sudokuBoardBridge;
+  if (existing && typeof existing.read === "function" && typeof existing.write === "function") {
+    return existing;
+  }
+
+  try {
+    window.eval(`
+      (() => {
+        if (typeof board === "undefined") {
+          return;
+        }
+        if (!window.__sudokuBoardBridge || typeof window.__sudokuBoardBridge.read !== "function" || typeof window.__sudokuBoardBridge.write !== "function") {
+          window.__sudokuBoardBridge = {
+            read: () => board,
+            write: (nextBoard) => {
+              board = nextBoard;
+              return board;
+            },
+          };
+        }
+      })();
+    `);
+  } catch {
+    return null;
+  }
+
+  const bridge = window.__sudokuBoardBridge;
+  if (bridge && typeof bridge.read === "function" && typeof bridge.write === "function") {
+    return bridge;
+  }
+  return null;
+}
+
+function readRuntimeBoard() {
+  const bridge = getRuntimeBoardBridge();
+  if (!bridge) {
+    return null;
+  }
+  try {
+    return bridge.read();
+  } catch {
+    return null;
+  }
+}
+
+function writeRuntimeBoard(nextBoard) {
+  const bridge = getRuntimeBoardBridge();
+  if (!bridge) {
+    return false;
+  }
+  try {
+    bridge.write(nextBoard);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function ensureDebugState() {
   window.__sudokuDebug = {
     ...(window.__sudokuDebug || {}),
@@ -105,11 +164,7 @@ function bindRunTracking() {
   };
 
   const readBoardState = () => {
-    try {
-      return cloneBoardState(window.eval("typeof board !== 'undefined' ? board : null"));
-    } catch {
-      return null;
-    }
+    return cloneBoardState(readRuntimeBoard());
   };
 
   const writeBoardState = (nextBoard) => {
@@ -118,24 +173,106 @@ function bindRunTracking() {
       return false;
     }
 
-    window.__sudokuReplayBoard = cloned;
-    try {
-      window.eval("if (typeof board !== 'undefined') { board = window.__sudokuReplayBoard; }");
-    } catch {
-      delete window.__sudokuReplayBoard;
+    if (!writeRuntimeBoard(cloned)) {
       return false;
     }
-    delete window.__sudokuReplayBoard;
     window.renderGrid?.();
     window.saveGame?.();
     return true;
   };
 
-  const captureBaseBoardSnapshot = () => {
-    const boardState = readBoardState();
-    if (boardState) {
-      baseBoardSnapshot = boardState;
+  const setBaseBoardSnapshot = (boardState, persist = false) => {
+    const snapshot = cloneBoardState(boardState);
+    if (!snapshot) {
+      return false;
     }
+    baseBoardSnapshot = snapshot;
+    if (persist) {
+      runState = {
+        ...runState,
+        baseBoardSnapshot: snapshot,
+      };
+      persistRunState();
+    }
+    return true;
+  };
+
+  const captureBaseBoardSnapshot = (persist = false) => {
+    return setBaseBoardSnapshot(readBoardState(), persist);
+  };
+
+  const normalizeNotes = (notes) => {
+    if (!Array.isArray(notes)) {
+      return [];
+    }
+    return notes
+      .filter((note) => Number.isInteger(note) && note >= 1 && note <= 9)
+      .sort((left, right) => left - right);
+  };
+
+  const areNotesEqual = (left, right) => {
+    const normalizedLeft = normalizeNotes(left);
+    const normalizedRight = normalizeNotes(right);
+    if (normalizedLeft.length !== normalizedRight.length) {
+      return false;
+    }
+    for (let i = 0; i < normalizedLeft.length; i += 1) {
+      if (normalizedLeft[i] !== normalizedRight[i]) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const hasCellChanged = (beforeCell, afterCell) => {
+    if (!beforeCell || !afterCell) {
+      return false;
+    }
+    return beforeCell.value !== afterCell.value
+      || beforeCell.error !== afterCell.error
+      || !areNotesEqual(beforeCell.notes, afterCell.notes);
+  };
+
+  const getBoardMutations = (beforeBoard, afterBoard) => {
+    if (!beforeBoard || !afterBoard) {
+      return [];
+    }
+
+    const mutations = [];
+    for (let row = 0; row < 9; row += 1) {
+      for (let col = 0; col < 9; col += 1) {
+        const beforeCell = beforeBoard?.[row]?.[col];
+        const afterCell = afterBoard?.[row]?.[col];
+        if (!beforeCell || !afterCell || afterCell.fixed) {
+          continue;
+        }
+        if (!hasCellChanged(beforeCell, afterCell)) {
+          continue;
+        }
+        mutations.push({ row, col, beforeCell, afterCell });
+      }
+    }
+    return mutations;
+  };
+
+  const getSingleToggledNote = (beforeNotes, afterNotes) => {
+    const beforeSet = new Set(normalizeNotes(beforeNotes));
+    const afterSet = new Set(normalizeNotes(afterNotes));
+    const delta = [];
+    for (const note of beforeSet) {
+      if (!afterSet.has(note)) {
+        delta.push(note);
+      }
+    }
+    for (const note of afterSet) {
+      if (!beforeSet.has(note)) {
+        delta.push(note);
+      }
+    }
+    if (delta.length !== 1) {
+      return null;
+    }
+    return delta[0];
   };
 
   const ensureRunIdentity = () => {
@@ -197,6 +334,40 @@ function bindRunTracking() {
     updateUndoRedoButtons();
   };
 
+  const pruneFutureBoardEvents = () => {
+    const boardEvents = getBoardEvents(runState.transcript);
+    const currentIndex = getCurrentBoardEventIndex(boardEvents);
+    if (currentIndex >= boardEvents.length - 1) {
+      return;
+    }
+
+    const retainedBoardIds = new Set(
+      boardEvents
+        .slice(0, Math.max(0, currentIndex + 1))
+        .map((event) => getBoardEventId(event))
+        .filter((eventId) => eventId != null),
+    );
+
+    const transcript = (Array.isArray(runState.transcript) ? runState.transcript : []).filter((event) => {
+      if (event?.eventClass !== "board") {
+        return true;
+      }
+      return retainedBoardIds.has(getBoardEventId(event));
+    });
+
+    const savepointBoardEventId =
+      runState.savepointBoardEventId && retainedBoardIds.has(runState.savepointBoardEventId)
+        ? runState.savepointBoardEventId
+        : null;
+
+    runState = {
+      ...runState,
+      transcript,
+      currentBoardEventId: currentIndex >= 0 ? getBoardEventId(boardEvents[currentIndex]) : null,
+      savepointBoardEventId,
+    };
+  };
+
   const applyBoardEvent = (boardState, event) => {
     const row = Number(event?.row);
     const col = Number(event?.col);
@@ -247,7 +418,10 @@ function bindRunTracking() {
 
   const replayBoardToCursor = () => {
     if (!baseBoardSnapshot) {
-      captureBaseBoardSnapshot();
+      const boardEvents = getBoardEvents(runState.transcript);
+      if (boardEvents.length === 0) {
+        captureBaseBoardSnapshot(true);
+      }
     }
     if (!baseBoardSnapshot) {
       return false;
@@ -349,6 +523,7 @@ function bindRunTracking() {
       runId: createRunId(),
       puzzleId: "unknown",
       transcriptTruncated: false,
+      baseBoardSnapshot: null,
       currentBoardEventId: null,
     };
     persistRunState();
@@ -358,8 +533,8 @@ function bindRunTracking() {
     ensureRunIdentity();
     const isBoardEvent = ["value_entered", "note_toggled", "erase_applied", "bulk_applied"]
       .includes(eventType);
-    if (isBoardEvent && !baseBoardSnapshot) {
-      captureBaseBoardSnapshot();
+    if (isBoardEvent) {
+      pruneFutureBoardEvents();
     }
 
     const nextBoardRevision = isBoardEvent
@@ -404,6 +579,13 @@ function bindRunTracking() {
     recordEvent("run_started");
   }
 
+  if (setBaseBoardSnapshot(runState.baseBoardSnapshot)) {
+    runState = {
+      ...runState,
+      baseBoardSnapshot,
+    };
+  }
+
   const existingBoardEvents = getBoardEvents(runState.transcript);
   if (existingBoardEvents.length > 0 && runState.currentBoardEventId == null) {
     runState = {
@@ -413,7 +595,9 @@ function bindRunTracking() {
     persistRunState();
   }
 
-  captureBaseBoardSnapshot();
+  if (!baseBoardSnapshot && existingBoardEvents.length === 0) {
+    captureBaseBoardSnapshot(true);
+  }
   ensureUndoRedoControls();
 
   const originalSaveGame = window.saveGame;
@@ -431,7 +615,10 @@ function bindRunTracking() {
       const loaded = originalLoadSavedGame.apply(this, args);
       if (loaded) {
         runState = loadRunStateFromSave() || loadRunState() || runState;
-        captureBaseBoardSnapshot();
+        const restoredBase = setBaseBoardSnapshot(runState.baseBoardSnapshot);
+        if (!restoredBase && getBoardEvents(runState.transcript).length === 0) {
+          captureBaseBoardSnapshot(true);
+        }
         persistRunState();
       }
       return loaded;
@@ -450,7 +637,7 @@ function bindRunTracking() {
           puzzleId: latestPuzzleId,
         };
       }
-      captureBaseBoardSnapshot();
+      captureBaseBoardSnapshot(true);
       persistRunState();
       return result;
     };
@@ -464,25 +651,83 @@ function bindRunTracking() {
     };
   }
 
+  const recordBoardMutations = (beforeBoard, afterBoard, actionType) => {
+    if (!baseBoardSnapshot) {
+      setBaseBoardSnapshot(beforeBoard, true);
+    }
+
+    const mutations = getBoardMutations(beforeBoard, afterBoard);
+    if (mutations.length === 0) {
+      return;
+    }
+
+    for (const mutation of mutations) {
+      const { row, col, beforeCell, afterCell } = mutation;
+      const beforeNotes = normalizeNotes(beforeCell.notes);
+      const afterNotes = normalizeNotes(afterCell.notes);
+      const noteValue = getSingleToggledNote(beforeNotes, afterNotes);
+
+      const wasErased =
+        afterCell.value == null
+        && afterCell.error === false
+        && afterNotes.length === 0
+        && actionType === "erase";
+
+      if (wasErased) {
+        recordEvent("erase_applied", { row, col });
+        continue;
+      }
+
+      if (afterCell.value == null && beforeCell.value == null && noteValue != null) {
+        recordEvent("note_toggled", { row, col, value: noteValue, mode: "notes" });
+        continue;
+      }
+
+      if (Number.isInteger(afterCell.value) && afterCell.value >= 1 && afterCell.value <= 9) {
+        recordEvent("value_entered", { row, col, value: afterCell.value, mode: "number" });
+      }
+    }
+  };
+
   const originalPlaceNumber = window.placeNumber;
   if (typeof originalPlaceNumber === "function") {
     window.placeNumber = function wrappedPlaceNumber(value, ...rest) {
-      const selectedCell = document.querySelector("#grid .cell.selected");
-      const cells = Array.from(document.querySelectorAll("#grid .cell"));
-      const idx = selectedCell ? cells.indexOf(selectedCell) : -1;
-      if (idx >= 0) {
-        recordEvent("value_entered", {
-          row: Math.floor(idx / 9),
-          col: idx % 9,
-          value,
-          mode: document.querySelector(".note-toggle")?.classList.contains("active")
-            ? "notes"
-            : "number",
-        });
-      }
-      return originalPlaceNumber.call(this, value, ...rest);
+      const beforeBoard = readBoardState();
+      const result = originalPlaceNumber.call(this, value, ...rest);
+      const afterBoard = readBoardState();
+      recordBoardMutations(beforeBoard, afterBoard, "place");
+      return result;
     };
   }
+
+  const originalEraseCell = window.eraseCell;
+  if (typeof originalEraseCell === "function") {
+    window.eraseCell = function wrappedEraseCell(...rest) {
+      const beforeBoard = readBoardState();
+      const result = originalEraseCell.call(this, ...rest);
+      const afterBoard = readBoardState();
+      recordBoardMutations(beforeBoard, afterBoard, "erase");
+      return result;
+    };
+  }
+
+  const eraseButton = document.querySelector("#numpad button.erase");
+  if (eraseButton) {
+    eraseButton.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      window.eraseCell?.();
+    }, { capture: true });
+  }
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Backspace" && event.key !== "Delete") {
+      return;
+    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    window.eraseCell?.();
+  }, { capture: true });
 
   const newGameButton = document.getElementById("newGame");
   if (newGameButton) {
@@ -584,11 +829,7 @@ function bindHintOverlayToggle(runTracking) {
   };
 
   const getBoardFromRuntime = () => {
-    try {
-      return normalizeBoard(window.eval("typeof board !== 'undefined' ? board : null"));
-    } catch {
-      return null;
-    }
+    return normalizeBoard(readRuntimeBoard());
   };
 
   const buildBoardFromGrid = () => {

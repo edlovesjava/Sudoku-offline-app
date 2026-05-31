@@ -339,6 +339,57 @@ def test_undo_redo_replays_board_events_only(page, live_server):
     assert editable.text_content().strip() == "1"
 
 
+def test_undo_replay_uses_stable_base_after_reload(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    editable.click()
+    page.get_by_role("button", name="1").click()
+    page.get_by_role("button", name="2").click()
+
+    page.reload()
+    editable = page.locator("#grid .cell:not(.fixed)").first
+
+    page.get_by_role("button", name="Undo").click()
+    assert editable.text_content().strip() == "1"
+
+    page.get_by_role("button", name="Undo").click()
+    assert editable.text_content().strip() in {"", "?"}
+
+
+def test_new_board_action_after_undo_prunes_redo_future(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    editable.click()
+    page.get_by_role("button", name="1").click()
+    page.get_by_role("button", name="2").click()
+
+    page.get_by_role("button", name="Undo").click()
+    assert editable.text_content().strip() == "1"
+
+    page.get_by_role("button", name="3").click()
+    assert editable.text_content().strip() == "3"
+
+    page.get_by_role("button", name="Undo").click()
+    assert editable.text_content().strip() == "1"
+
+
+def test_erase_action_is_undoable(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    editable.click()
+    page.get_by_role("button", name="4", exact=True).click()
+    assert editable.text_content().strip() == "4"
+
+    page.get_by_role("button", name="Erase").click()
+    assert editable.text_content().strip() in {"", "?"}
+
+    page.get_by_role("button", name="Undo").click()
+    assert editable.text_content().strip() == "4"
+
+
 def test_transcript_is_bounded(page, live_server):
     page.goto(live_server)
 
@@ -792,6 +843,62 @@ def test_long_press_multi_select_and_bulk_number_fill(page, live_server):
         """
     )
     assert notes_applied == [True, True]
+
+
+def test_bulk_erase_action_is_undoable(page, live_server):
+    page.goto(live_server)
+    page.wait_for_selector("#grid .cell")
+
+    editable_indexes = page.evaluate(
+        """
+        () => {
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          return cells
+            .map((cell, idx) => ({ idx, fixed: cell.classList.contains('fixed') }))
+            .filter((entry) => !entry.fixed)
+            .slice(0, 2)
+            .map((entry) => entry.idx);
+        }
+        """
+    )
+    assert len(editable_indexes) == 2
+
+    first = page.locator("#grid .cell").nth(editable_indexes[0])
+    second = page.locator("#grid .cell").nth(editable_indexes[1])
+
+    first_box = first.bounding_box()
+    assert first_box is not None
+    page.mouse.move(first_box["x"] + (first_box["width"] / 2), first_box["y"] + (first_box["height"] / 2))
+    page.mouse.down()
+    page.wait_for_timeout(450)
+    page.mouse.up()
+
+    second.click()
+    page.get_by_role("button", name="7", exact=True).click()
+    page.get_by_role("button", name="Erase").click()
+
+    erased_values = page.evaluate(
+        f"""
+        () => {{
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          return [cells[{editable_indexes[0]}].textContent.trim(), cells[{editable_indexes[1]}].textContent.trim()];
+        }}
+        """
+    )
+    assert erased_values == ["", ""]
+
+    page.get_by_role("button", name="Undo").click()
+    page.get_by_role("button", name="Undo").click()
+
+    restored_values = page.evaluate(
+        f"""
+        () => {{
+          const cells = Array.from(document.querySelectorAll('#grid .cell'));
+          return [cells[{editable_indexes[0]}].textContent.trim(), cells[{editable_indexes[1]}].textContent.trim()];
+        }}
+        """
+    )
+    assert restored_values == ["7", "7"]
 
 
 def test_new_game_clears_long_press_multi_select_state(page, live_server):
