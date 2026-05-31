@@ -431,22 +431,91 @@ def test_undo_replay_uses_stable_base_after_reload(page, live_server):
     assert editable.text_content().strip() in {"", "?"}
 
 
-def test_new_board_action_after_undo_prunes_redo_future(page, live_server):
+def test_new_board_action_after_undo_clears_redo_path(page, live_server):
     page.goto(live_server)
 
     editable = page.locator("#grid .cell:not(.fixed)").first
+    redo_button = page.get_by_role("button", name="Redo")
     editable.click()
     page.get_by_role("button", name="1").click()
     page.get_by_role("button", name="2").click()
 
     page.get_by_role("button", name="Undo", exact=True).click()
     assert editable.text_content().strip() == "1"
+    assert not redo_button.is_disabled()
 
     page.get_by_role("button", name="3").click()
     assert editable.text_content().strip() == "3"
+    assert redo_button.is_disabled()
+
+    board_values = page.evaluate(
+        """
+        () => {
+          const run = JSON.parse(localStorage.getItem('sudoku_run') || '{}');
+          return (run.transcript || [])
+            .filter((event) => event?.eventClass === 'board')
+            .map((event) => event.value);
+        }
+        """
+    )
+    assert board_values == [1, 3]
 
     page.get_by_role("button", name="Undo", exact=True).click()
     assert editable.text_content().strip() == "1"
+
+
+def test_undo_redo_and_savepoint_controls_follow_state(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    undo_button = page.get_by_role("button", name="Undo", exact=True)
+    redo_button = page.get_by_role("button", name="Redo")
+    savepoint_button = page.get_by_role("button", name="Savepoint", exact=True)
+    undo_to_savepoint_button = page.get_by_role("button", name="Undo to Savepoint")
+    clear_savepoint_button = page.get_by_role("button", name="Clear Savepoint")
+
+    assert undo_button.is_disabled()
+    assert redo_button.is_disabled()
+    assert undo_to_savepoint_button.is_disabled()
+    assert clear_savepoint_button.is_disabled()
+
+    editable.click()
+    page.get_by_role("button", name="1").click()
+
+    assert not undo_button.is_disabled()
+    assert redo_button.is_disabled()
+    assert undo_to_savepoint_button.is_disabled()
+    assert clear_savepoint_button.is_disabled()
+
+    savepoint_button.click()
+
+    assert undo_to_savepoint_button.is_disabled()
+    assert not clear_savepoint_button.is_disabled()
+
+    page.get_by_role("button", name="2").click()
+
+    assert not undo_button.is_disabled()
+    assert redo_button.is_disabled()
+    assert not undo_to_savepoint_button.is_disabled()
+    assert not clear_savepoint_button.is_disabled()
+
+    undo_button.click()
+
+    assert not undo_button.is_disabled()
+    assert not redo_button.is_disabled()
+    assert undo_to_savepoint_button.is_disabled()
+    assert not clear_savepoint_button.is_disabled()
+
+    page.get_by_role("button", name="3").click()
+
+    assert not undo_button.is_disabled()
+    assert redo_button.is_disabled()
+    assert not undo_to_savepoint_button.is_disabled()
+    assert not clear_savepoint_button.is_disabled()
+
+    clear_savepoint_button.click()
+    assert undo_to_savepoint_button.is_disabled()
+    assert clear_savepoint_button.is_disabled()
 
 
 def test_erase_action_is_undoable(page, live_server):
