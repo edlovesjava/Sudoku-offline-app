@@ -454,12 +454,21 @@ function bindRunTracking() {
       return false;
     }
 
+    const previousCursor = runState.currentBoardEventId;
     runState = {
       ...runState,
       currentBoardEventId: currentIndex === 0 ? null : getBoardEventId(boardEvents[currentIndex - 1]),
     };
-    persistRunState();
-    return true;
+    if (replayBoardToCursor()) {
+      return true;
+    }
+
+    runState = {
+      ...runState,
+      currentBoardEventId: previousCursor,
+    };
+    updateUndoRedoButtons();
+    return false;
   };
 
   const moveUndoCursorForward = () => {
@@ -469,12 +478,21 @@ function bindRunTracking() {
       return false;
     }
 
+    const previousCursor = runState.currentBoardEventId;
     runState = {
       ...runState,
       currentBoardEventId: getBoardEventId(boardEvents[nextIndex]),
     };
-    persistRunState();
-    return true;
+    if (replayBoardToCursor()) {
+      return true;
+    }
+
+    runState = {
+      ...runState,
+      currentBoardEventId: previousCursor,
+    };
+    updateUndoRedoButtons();
+    return false;
   };
 
   const ensureUndoRedoControls = () => {
@@ -502,15 +520,11 @@ function bindRunTracking() {
     }
 
     undoButton.addEventListener("click", () => {
-      if (moveUndoCursorBackward()) {
-        replayBoardToCursor();
-      }
+      moveUndoCursorBackward();
     });
 
     redoButton.addEventListener("click", () => {
-      if (moveUndoCursorForward()) {
-        replayBoardToCursor();
-      }
+      moveUndoCursorForward();
     });
 
     updateUndoRedoButtons();
@@ -586,7 +600,21 @@ function bindRunTracking() {
     };
   }
 
-  const existingBoardEvents = getBoardEvents(runState.transcript);
+  let existingBoardEvents = getBoardEvents(runState.transcript);
+  if (!baseBoardSnapshot && existingBoardEvents.length > 0) {
+    const transcriptWithoutLegacyBoardEvents =
+      (Array.isArray(runState.transcript) ? runState.transcript : []).filter((event) => event?.eventClass !== "board");
+    runState = {
+      ...runState,
+      transcript: transcriptWithoutLegacyBoardEvents,
+      boardRevision: 0,
+      currentBoardEventId: null,
+      savepointBoardEventId: null,
+    };
+    existingBoardEvents = [];
+    persistRunState();
+  }
+
   if (existingBoardEvents.length > 0 && runState.currentBoardEventId == null) {
     runState = {
       ...runState,

@@ -390,6 +390,126 @@ def test_erase_action_is_undoable(page, live_server):
     assert editable.text_content().strip() == "4"
 
 
+def test_undo_does_not_persist_cursor_when_replay_fails(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    editable.click()
+    page.get_by_role("button", name="1").click()
+
+    current_before = page.evaluate(
+        "JSON.parse(localStorage.getItem('sudoku_run') || '{}').currentBoardEventId"
+    )
+    assert current_before == "board-1"
+
+    page.evaluate(
+        """
+        () => {
+          const bridge = window.__sudokuBoardBridge;
+          if (!bridge) {
+            return;
+          }
+          bridge.write = () => {
+            throw new Error('forced replay failure');
+          };
+        }
+        """
+    )
+
+    page.get_by_role("button", name="Undo").click()
+
+    current_after = page.evaluate(
+        "JSON.parse(localStorage.getItem('sudoku_run') || '{}').currentBoardEventId"
+    )
+    assert current_after == "board-1"
+    assert editable.text_content().strip() == "1"
+
+
+def test_legacy_run_state_without_base_snapshot_is_migrated(page, live_server):
+    page.goto(live_server)
+
+    page.evaluate(
+        """
+        () => {
+          const legacyRun = {
+            schemaVersion: 2,
+            runId: 'legacy-run',
+            puzzleId: 'legacy-puzzle',
+            assisted: false,
+            transcriptTruncated: false,
+            boardRevision: 1,
+            baseBoardSnapshot: null,
+            currentBoardEventId: 'board-1',
+            savepointBoardEventId: null,
+            transcript: [
+              {
+                schemaVersion: 2,
+                runId: 'legacy-run',
+                puzzleId: 'legacy-puzzle',
+                eventId: 'event-legacy-ui',
+                eventClass: 'ui',
+                boardRevision: 0,
+                eventTime: new Date(0).toISOString(),
+                elapsedMs: 0,
+                eventType: 'run_started',
+                payload: {},
+              },
+              {
+                schemaVersion: 2,
+                runId: 'legacy-run',
+                puzzleId: 'legacy-puzzle',
+                eventId: 'board-1',
+                eventClass: 'board',
+                boardRevision: 1,
+                eventTime: new Date(0).toISOString(),
+                elapsedMs: 1,
+                eventType: 'value_entered',
+                payload: { row: 0, col: 2, value: 1, mode: 'number' },
+                row: 0,
+                col: 2,
+                value: 1,
+                mode: 'number',
+              },
+            ],
+          };
+
+          localStorage.setItem('sudoku_run', JSON.stringify(legacyRun));
+
+          const rawSave = localStorage.getItem('sudoku_save');
+          const parsedSave = rawSave ? JSON.parse(rawSave) : {};
+          localStorage.setItem('sudoku_save', JSON.stringify({
+            ...parsedSave,
+            assisted: false,
+            run: legacyRun,
+          }));
+        }
+        """
+    )
+
+    page.reload()
+
+    migrated = page.evaluate(
+        """
+        () => {
+          const run = JSON.parse(localStorage.getItem('sudoku_run') || '{}');
+          const boardEvents = (run.transcript || []).filter((event) => event?.eventClass === 'board');
+          return {
+            boardEventCount: boardEvents.length,
+            currentBoardEventId: run.currentBoardEventId,
+            boardRevision: run.boardRevision,
+          };
+        }
+        """
+    )
+
+    assert migrated["boardEventCount"] == 0
+    assert migrated["currentBoardEventId"] is None
+    assert migrated["boardRevision"] == 0
+
+    undo_button = page.get_by_role("button", name="Undo")
+    assert undo_button.is_disabled()
+
+
 def test_transcript_is_bounded(page, live_server):
     page.goto(live_server)
 
