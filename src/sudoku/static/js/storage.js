@@ -71,8 +71,14 @@ function normalizeRunState(raw) {
       ? Math.max(0, Math.floor(raw.boardRevision))
       : 0,
     baseBoardSnapshot: normalizeBoardSnapshot(raw?.baseBoardSnapshot),
-    currentBoardEventId: raw?.currentBoardEventId ?? null,
-    savepointBoardEventId: raw?.savepointBoardEventId ?? null,
+    currentBoardEventId:
+      typeof raw?.currentBoardEventId === "string" && raw.currentBoardEventId.length > 0
+        ? raw.currentBoardEventId
+        : null,
+    savepointBoardEventId:
+      typeof raw?.savepointBoardEventId === "string" && raw.savepointBoardEventId.length > 0
+        ? raw.savepointBoardEventId
+        : null,
   };
 }
 

@@ -131,6 +131,9 @@ function bindRunTracking() {
   let baseBoardSnapshot = null;
   let undoButton = null;
   let redoButton = null;
+  let savepointButton = null;
+  let undoToSavepointButton = null;
+  let clearSavepointButton = null;
 
   const cloneBoardState = (rawBoard) => {
     if (!Array.isArray(rawBoard) || rawBoard.length !== 9) {
@@ -307,6 +310,13 @@ function bindRunTracking() {
     return boardEvents.findIndex((event) => getBoardEventId(event) === runState.currentBoardEventId);
   };
 
+  const getBoardEventIndexById = (boardEvents, eventId) => {
+    if (eventId == null) {
+      return -1;
+    }
+    return boardEvents.findIndex((event) => getBoardEventId(event) === eventId);
+  };
+
   const canUndo = () => {
     const boardEvents = getBoardEvents(runState.transcript);
     return getCurrentBoardEventIndex(boardEvents) >= 0;
@@ -318,12 +328,26 @@ function bindRunTracking() {
     return nextIndex >= 0 && nextIndex < boardEvents.length;
   };
 
+  const canUndoToSavepoint = () => {
+    if (runState.savepointBoardEventId == null) {
+      return false;
+    }
+    const boardEvents = getBoardEvents(runState.transcript);
+    return getBoardEventIndexById(boardEvents, runState.savepointBoardEventId) >= 0;
+  };
+
   const updateUndoRedoButtons = () => {
     if (undoButton) {
       undoButton.disabled = !canUndo();
     }
     if (redoButton) {
       redoButton.disabled = !canRedo();
+    }
+    if (undoToSavepointButton) {
+      undoToSavepointButton.disabled = !canUndoToSavepoint();
+    }
+    if (clearSavepointButton) {
+      clearSavepointButton.disabled = runState.savepointBoardEventId == null;
     }
   };
 
@@ -495,6 +519,48 @@ function bindRunTracking() {
     return false;
   };
 
+  const setSavepoint = () => {
+    runState = {
+      ...runState,
+      savepointBoardEventId: runState.currentBoardEventId ?? null,
+    };
+    persistRunState();
+  };
+
+  const undoToSavepoint = () => {
+    if (!canUndoToSavepoint()) {
+      return false;
+    }
+
+    const previousCursor = runState.currentBoardEventId;
+    runState = {
+      ...runState,
+      currentBoardEventId: runState.savepointBoardEventId,
+    };
+
+    if (replayBoardToCursor()) {
+      return true;
+    }
+
+    runState = {
+      ...runState,
+      currentBoardEventId: previousCursor,
+    };
+    updateUndoRedoButtons();
+    return false;
+  };
+
+  const clearSavepoint = () => {
+    if (runState.savepointBoardEventId == null) {
+      return;
+    }
+    runState = {
+      ...runState,
+      savepointBoardEventId: null,
+    };
+    persistRunState();
+  };
+
   const ensureUndoRedoControls = () => {
     const controls = document.querySelector(".controls");
     if (!controls) {
@@ -519,12 +585,51 @@ function bindRunTracking() {
       controls.appendChild(redoButton);
     }
 
+    savepointButton = document.getElementById("savepointBtn");
+    if (!savepointButton) {
+      savepointButton = document.createElement("button");
+      savepointButton.id = "savepointBtn";
+      savepointButton.type = "button";
+      savepointButton.textContent = "Savepoint";
+      controls.appendChild(savepointButton);
+    }
+
+    undoToSavepointButton = document.getElementById("undoToSavepointBtn");
+    if (!undoToSavepointButton) {
+      undoToSavepointButton = document.createElement("button");
+      undoToSavepointButton.id = "undoToSavepointBtn";
+      undoToSavepointButton.type = "button";
+      undoToSavepointButton.textContent = "Undo to Savepoint";
+      controls.appendChild(undoToSavepointButton);
+    }
+
+    clearSavepointButton = document.getElementById("clearSavepointBtn");
+    if (!clearSavepointButton) {
+      clearSavepointButton = document.createElement("button");
+      clearSavepointButton.id = "clearSavepointBtn";
+      clearSavepointButton.type = "button";
+      clearSavepointButton.textContent = "Clear Savepoint";
+      controls.appendChild(clearSavepointButton);
+    }
+
     undoButton.addEventListener("click", () => {
       moveUndoCursorBackward();
     });
 
     redoButton.addEventListener("click", () => {
       moveUndoCursorForward();
+    });
+
+    savepointButton.addEventListener("click", () => {
+      setSavepoint();
+    });
+
+    undoToSavepointButton.addEventListener("click", () => {
+      undoToSavepoint();
+    });
+
+    clearSavepointButton.addEventListener("click", () => {
+      clearSavepoint();
     });
 
     updateUndoRedoButtons();
@@ -539,6 +644,7 @@ function bindRunTracking() {
       transcriptTruncated: false,
       baseBoardSnapshot: null,
       currentBoardEventId: null,
+      savepointBoardEventId: null,
     };
     persistRunState();
   };

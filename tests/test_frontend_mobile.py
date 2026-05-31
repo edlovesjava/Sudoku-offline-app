@@ -332,11 +332,39 @@ def test_undo_redo_replays_board_events_only(page, live_server):
     editable.click()
     page.get_by_role("button", name="1").click()
 
-    page.get_by_role("button", name="Undo").click()
+    page.get_by_role("button", name="Undo", exact=True).click()
     assert editable.text_content().strip() in {"", "?"}
 
     page.get_by_role("button", name="Redo").click()
     assert editable.text_content().strip() == "1"
+
+
+def test_savepoint_set_undo_to_savepoint_and_clear(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    editable.click()
+    page.get_by_role("button", name="1").click()
+
+    page.get_by_role("button", name="Savepoint", exact=True).click()
+
+    page.get_by_role("button", name="2").click()
+    assert editable.text_content().strip() == "2"
+
+    page.get_by_role("button", name="Undo to Savepoint").click()
+    assert editable.text_content().strip() == "1"
+
+    savepoint_before_clear = page.evaluate(
+        "JSON.parse(localStorage.getItem('sudoku_run') || '{}').savepointBoardEventId"
+    )
+    assert savepoint_before_clear == "board-1"
+
+    page.get_by_role("button", name="Clear Savepoint").click()
+
+    savepoint_after_clear = page.evaluate(
+        "JSON.parse(localStorage.getItem('sudoku_run') || '{}').savepointBoardEventId"
+    )
+    assert savepoint_after_clear is None
 
 
 def test_undo_replay_uses_stable_base_after_reload(page, live_server):
@@ -350,10 +378,10 @@ def test_undo_replay_uses_stable_base_after_reload(page, live_server):
     page.reload()
     editable = page.locator("#grid .cell:not(.fixed)").first
 
-    page.get_by_role("button", name="Undo").click()
+    page.get_by_role("button", name="Undo", exact=True).click()
     assert editable.text_content().strip() == "1"
 
-    page.get_by_role("button", name="Undo").click()
+    page.get_by_role("button", name="Undo", exact=True).click()
     assert editable.text_content().strip() in {"", "?"}
 
 
@@ -365,13 +393,13 @@ def test_new_board_action_after_undo_prunes_redo_future(page, live_server):
     page.get_by_role("button", name="1").click()
     page.get_by_role("button", name="2").click()
 
-    page.get_by_role("button", name="Undo").click()
+    page.get_by_role("button", name="Undo", exact=True).click()
     assert editable.text_content().strip() == "1"
 
     page.get_by_role("button", name="3").click()
     assert editable.text_content().strip() == "3"
 
-    page.get_by_role("button", name="Undo").click()
+    page.get_by_role("button", name="Undo", exact=True).click()
     assert editable.text_content().strip() == "1"
 
 
@@ -386,7 +414,7 @@ def test_erase_action_is_undoable(page, live_server):
     page.get_by_role("button", name="Erase").click()
     assert editable.text_content().strip() in {"", "?"}
 
-    page.get_by_role("button", name="Undo").click()
+    page.get_by_role("button", name="Undo", exact=True).click()
     assert editable.text_content().strip() == "4"
 
 
@@ -416,7 +444,7 @@ def test_undo_does_not_persist_cursor_when_replay_fails(page, live_server):
         """
     )
 
-    page.get_by_role("button", name="Undo").click()
+    page.get_by_role("button", name="Undo", exact=True).click()
 
     current_after = page.evaluate(
         "JSON.parse(localStorage.getItem('sudoku_run') || '{}').currentBoardEventId"
@@ -506,7 +534,7 @@ def test_legacy_run_state_without_base_snapshot_is_migrated(page, live_server):
     assert migrated["currentBoardEventId"] is None
     assert migrated["boardRevision"] == 0
 
-    undo_button = page.get_by_role("button", name="Undo")
+    undo_button = page.get_by_role("button", name="Undo", exact=True)
     assert undo_button.is_disabled()
 
 
@@ -1007,8 +1035,8 @@ def test_bulk_erase_action_is_undoable(page, live_server):
     )
     assert erased_values == ["", ""]
 
-    page.get_by_role("button", name="Undo").click()
-    page.get_by_role("button", name="Undo").click()
+    page.get_by_role("button", name="Undo", exact=True).click()
+    page.get_by_role("button", name="Undo", exact=True).click()
 
     restored_values = page.evaluate(
         f"""
