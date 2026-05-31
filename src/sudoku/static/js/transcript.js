@@ -20,6 +20,10 @@ export function appendTranscriptEvent(transcript, event) {
   return truncateTranscript([...(Array.isArray(transcript) ? transcript : []), event]);
 }
 
+export function getBoardEvents(transcript) {
+  return (Array.isArray(transcript) ? transcript : []).filter((event) => event?.eventClass === "board");
+}
+
 export function serializeTranscript(transcript) {
   return JSON.stringify(createTranscript(transcript));
 }

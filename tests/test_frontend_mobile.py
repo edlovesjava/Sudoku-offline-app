@@ -325,6 +325,20 @@ def test_transcript_board_events_include_class_and_revision(page, live_server):
     assert all("boardRevision" in event for event in board_events)
 
 
+def test_undo_redo_replays_board_events_only(page, live_server):
+    page.goto(live_server)
+
+    editable = page.locator("#grid .cell:not(.fixed)").first
+    editable.click()
+    page.get_by_role("button", name="1").click()
+
+    page.get_by_role("button", name="Undo").click()
+    assert editable.text_content().strip() in {"", "?"}
+
+    page.get_by_role("button", name="Redo").click()
+    assert editable.text_content().strip() == "1"
+
+
 def test_transcript_is_bounded(page, live_server):
     page.goto(live_server)
 
